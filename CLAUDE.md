@@ -46,11 +46,13 @@ func main() {
 }
 ```
 
-- **Events** (`sc.Event` carries `e.Robot`): `EventSpawn`, `EventArrived`, `EventBlocked`,
-  `EventScanResult`, `EventConstructionComplete`, `EventMiningComplete`, `EventStorageFull`,
-  `EventInventoryFull`, `EventRobotProduced`. (Same set as Python.)
-- **Drive it purely by events — do NOT poll with a tick loop.** The rule: every handler
-  issues the robot's next command, so no robot is ever stuck idle with no future event.
+- **Events** (`sc.Event` carries `e.Robot`): `EventIdle` (a robot is free — the main hook),
+  `EventSpawn`, `EventArrived`, `EventBlocked`, `EventScanResult`, `EventConstructionComplete`,
+  `EventMiningComplete`, `EventSpotDepleted`, `EventStorageFull`, `EventInventoryFull`,
+  `EventRobotProduced`. (Same set as Python.)
+- **Drive it purely by events — do NOT poll with a tick loop.** Build around `EventIdle`: it
+  fires exactly when a robot needs a command. The rule: every handler issues the robot's next
+  command, so no robot is ever stuck idle with no future event.
 - **Robot commands** — `r := city.Robot(id)`: `r.MoveTo(x, y)`, `r.Scan(radius)`,
   `r.StartConstruction(sc.BuildingMining)`, `r.Connect()`, `r.Mine()`, `r.PickUp(...)`,
   `r.Drop(...)`, `r.Cancel()`, `r.Log("…")`. Position-based: act on the robot's cell (Base
