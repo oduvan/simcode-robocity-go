@@ -39,21 +39,22 @@ import sc "github.com/lyabah/simcode-sdk-go"
 
 func main() {
     city := sc.New()                              // connects via the SDK runtime
-    city.On(sc.EventSpawn, func(e sc.Event) {     // subscribe to an event
-        city.Robot(e.Robot).Scan(6)               // issue a command
+    city.On(sc.EventIdle, func(e sc.Event) {      // subscribe to an event
+        city.Robot(e.Robot).MoveTo(8, 8)          // move into the fog to reveal more map
     })
     city.Run()                                    // dispatch loop
 }
 ```
 
 - **Events** (`sc.Event` carries `e.Robot`): `EventIdle` (a robot is free — the main hook),
-  `EventSpawn`, `EventArrived`, `EventBlocked`, `EventScanResult`, `EventConstructionComplete`,
+  `EventSpawn`, `EventArrived`, `EventBlocked`, `EventConstructionComplete`,
   `EventMiningComplete`, `EventSpotDepleted`, `EventStorageFull`, `EventInventoryFull`,
-  `EventRobotProduced`. (Same set as Python.)
+  `EventRobotProduced`. (Same set as Python.) Discovery is **by moving** — a robot reveals a
+  radius (~5) around itself as it moves; there is no scan command.
 - **Drive it purely by events — do NOT poll with a tick loop.** Build around `EventIdle`: it
   fires exactly when a robot needs a command. The rule: every handler issues the robot's next
   command, so no robot is ever stuck idle with no future event.
-- **Robot commands** — `r := city.Robot(id)`: `r.MoveTo(x, y)`, `r.Scan(radius)`,
+- **Robot commands** — `r := city.Robot(id)`: `r.MoveTo(x, y)`,
   `r.StartConstruction(sc.BuildingMining)`, `r.Connect()`, `r.Mine()`, `r.PickUp(...)`,
   `r.Drop(...)`, `r.Cancel()`, `r.Log("…")`. Position-based: act on the robot's cell (Base
   drop also works from an adjacent cell).

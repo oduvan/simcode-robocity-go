@@ -1,31 +1,26 @@
 // Robot City Builder — starter controller (Go).
 // One program controls the whole city; address each robot by id. The Go SDK
-// mirrors the Python wire protocol. Runtime API lands in Phase 1.
+// mirrors the Python wire protocol. Runtime API lands in a later phase.
+//
+// The game is event-driven: build around `idle` (fired when a robot is free) and
+// issue its next command. Discovery is by MOVING — a robot reveals the area
+// around it as it moves; there is no scan command.
 package main
 
 import sc "github.com/lyabah/simcode-sdk-go"
 
 func main() {
-	city := sc.New() // connects to GAME via the SDK runtime (Phase 1)
+	city := sc.New() // connects to GAME via the SDK runtime (later phase)
 
-	// A robot entered the world — start scouting.
-	city.On(sc.EventSpawn, func(e sc.Event) {
-		city.Robot(e.Robot).Scan(6)
-	})
-
-	// Found tiles — head to an ore spot if there is one.
-	city.On(sc.EventScanResult, func(e sc.Event) {
+	// A robot is free — decide its next command from its live state. Here: if it
+	// isn't on a resource spot, move into the fog to discover one.
+	city.On(sc.EventIdle, func(e sc.Event) {
 		r := city.Robot(e.Robot)
-		if spot := r.Find(e.Cells, "ore_spot"); spot != nil {
-			r.MoveTo(spot.X, spot.Y)
-		}
-	})
-
-	// Standing on a spot — build a mine, then mine.
-	city.On(sc.EventArrived, func(e sc.Event) {
-		r := city.Robot(e.Robot)
-		if r.Here().Spot != nil && r.Here().Building == nil {
+		if here := r.Here(); here.Spot != nil && here.Building == nil {
 			r.StartConstruction(sc.BuildingMining)
+		} else {
+			x, y := r.Position()
+			r.MoveTo(x+5, y) // explore by moving (reveals new map)
 		}
 	})
 
