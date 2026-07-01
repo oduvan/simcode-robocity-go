@@ -1,50 +1,38 @@
 // Robot City Builder — starter controller (Go).
 //
-// One program drives the whole fleet by id. The game is event-driven: whenever a
-// robot is free it fires `idle`, and you give it its next command.
+// One program drives the whole fleet by id. Whenever a robot is free it fires
+// `idle`; you read its live state and give it its next command.
 //
-// The world (redesigned): robots FLY in straight lines over float coordinates and
-// spend ENERGY doing it — run out mid-flight and the robot is destroyed. Mining
-// and construction are AUTONOMOUS: you place a build site with world.Build(...)
-// and robots only HAUL resources to it; a Mining building then digs on its own.
-// Robots recharge by landing on a Flying Station and calling Charge().
+// Robots FLY (float coords) and spend ENERGY — run dry mid-flight and a robot is
+// destroyed. Mining and construction are AUTONOMOUS: place a site with
+// city.World().Build(...) and robots only HAUL to it; a Mining building then digs
+// by itself. Recharge with r.Charge() on the Flying Station (one sits by the Base).
 //
-// This starter loop, per robot:
-//
-//	holds a starter kit  -> fly to a resource spot, place a Mining site, drop the kit
-//	empty-handed         -> haul a Mining building's output to the Base (which builds
-//	                        more robots) or to a build site that still needs it
-//	low on energy        -> fly to a Flying Station and charge
-//
-// Read it, then make it smarter. See CLAUDE.md for the full SDK + rules.
+// The loop, per robot: charge if low -> spend a starter kit to build a mine ->
+// haul mine output to the Base (which builds more robots) -> repeat. Read it,
+// then make it smarter. See CLAUDE.md for the full SDK.
 package main
 
 import sc "github.com/lyabah/simcode-sdk-go"
 
-const (
-	lowEnergy = 30.0 // recharge below this much battery
-	mineOre   = 6    // a Mining site needs 6 ore + 3 metal
-	mineMetal = 3
-)
-
-var stepCount = map[string]int{} // robot id -> explore counter (so robots fan out)
+const kitOre, kitMetal = 6, 3 // a Mining site costs 6 ore + 3 metal — one starter kit
 
 func main() {
 	city := sc.New()
-
 	city.On(sc.EventIdle, func(e sc.Event) {
 		r := city.Robot(e.Robot)
 		base := city.Base()
 		if base == nil {
 			return
 		}
-		rx, ry := r.Cell()
+		x, y := r.Position()
+		cx, cy := r.Cell()
 		inv := r.Inventory()
 
-		// 0. Low battery -> land on a Flying Station and charge (if one exists).
-		if st := activeStation(city, r); st != nil && r.Energy() <= lowEnergy {
+		// Low battery -> land on the Flying Station and charge (one sits by the Base).
+		if st := nearest(city, sc.BuildingFlyingStation, x, y); st != nil && r.Energy() < 35 {
 			sx, sy := st.Position()
-			if rx == sx && ry == sy {
+			if cx == sx && cy == sy {
 				r.Charge()
 			} else {
 				r.MoveTo(float64(sx), float64(sy))
@@ -52,227 +40,117 @@ func main() {
 			return
 		}
 
-		// 1. Holding a full starter kit -> turn a resource spot into a Mining site.
-		if inv.Ore >= mineOre && inv.Metal >= mineMetal {
-			want := "metal"
-			if base.Storage().Ore <= base.Storage().Metal {
+		// Holding a starter kit -> build a mine on a spot. Split the first robots
+		// by id so the Base gets BOTH ore and metal (it needs both).
+		if inv.Ore >= kitOre && inv.Metal >= kitMetal {
+			s, want := base.Storage(), "metal"
+			switch {
+			case s.Ore < s.Metal:
+				want = "ore"
+			case s.Ore == s.Metal && idSum(r.ID)%2 == 1:
 				want = "ore"
 			}
-			if spot, ok := unbuiltSpot(city, r, want); ok {
-				if rx == spot[0] && ry == spot[1] {
-					city.World().Build(sc.BuildingMining, spot[0], spot[1]) // self-builds once supplied
-					r.Drop(mineOre, mineMetal)
-				} else {
-					r.MoveTo(float64(spot[0]), float64(spot[1]))
-				}
+			if spot, ok := freeSpot(city, want, x, y); !ok {
+				r.MoveTo(x+6, y) // nothing known -> explore
+			} else if cx == spot[0] && cy == spot[1] {
+				city.World().Build(sc.BuildingMining, spot[0], spot[1]) // self-builds
+				r.Drop(kitOre, kitMetal)
 			} else {
-				explore(city, r) // nothing to claim — reveal more map
+				r.MoveTo(float64(spot[0]), float64(spot[1]))
 			}
 			return
 		}
 
-		// 2. Carrying mined output -> deliver to a build site that needs it, else Base.
+		// Carrying mined output -> haul to the Base, which produces more robots.
 		if inv.Ore+inv.Metal > 0 {
-			target, toBase := deliverTarget(city, base, inv)
-			if rx == target[0] && ry == target[1] {
+			bx, by := base.Position()
+			if cx == bx && cy == by {
 				r.Drop()
-				if toBase {
-					base.BuildRobot(1) // feed growth at the Base
-				}
+				base.BuildRobot(1)
 			} else {
-				r.MoveTo(float64(target[0]), float64(target[1]))
+				r.MoveTo(float64(bx), float64(by))
 			}
 			return
 		}
 
-		// 3. Empty-handed -> haul a stocked mine's output.
-		if m, ok := stockedMine(city, r); ok {
+		// Empty -> haul from a stocked mine, else explore to reveal more map.
+		if m := stockedMine(city, x, y); m != nil {
 			mx, my := m.Position()
-			if rx == mx && ry == my {
+			if cx == mx && cy == my {
 				r.PickUp()
 			} else {
 				r.MoveTo(float64(mx), float64(my))
 			}
 			return
 		}
-
-		// 4. Idle with nothing to haul -> ensure a Flying Station exists, else explore.
-		if activeStation(city, r) == nil && !anyStation(city) {
-			if p, ok := emptyNearBase(city, base); ok {
-				city.World().Build(sc.BuildingFlyingStation, p[0], p[1]) // haulers will supply it
-				return
-			}
-		}
-		explore(city, r)
+		r.MoveTo(x+6, y)
 	})
-
 	_ = city.Run()
 }
 
-// --- reading the world (fresh each event) ----------------------------------
-
-func builtCells(city *sc.City) map[[2]int]bool {
-	out := map[[2]int]bool{}
-	for _, b := range city.Buildings() {
-		bx, by := b.Position()
-		out[[2]int{bx, by}] = true
-	}
-	return out
-}
-
-// unbuiltSpot returns the nearest discovered spot with nothing built on it,
-// preferring the resource `want`.
-func unbuiltSpot(city *sc.City, r *sc.Robot, want string) ([2]int, bool) {
-	built := builtCells(city)
-	rx, ry := r.Position()
-	var best [2]int
-	bestRank, bestDist, found := 2, 0, false
-	for _, s := range city.World().Spots() {
-		p := [2]int{s.X, s.Y}
-		if built[p] || s.Spot == nil || s.Spot.Remaining <= 0 {
-			continue
-		}
-		rank := 1
-		if s.Spot.Resource == want {
-			rank = 0
-		}
-		d := absF(rx-float64(s.X)) + absF(ry-float64(s.Y))
-		if !found || rank < bestRank || (rank == bestRank && d < float64(bestDist)) {
-			best, bestRank, bestDist, found = p, rank, int(d), true
-		}
-	}
-	return best, found
-}
-
-// stockedMine returns the nearest active Mining building holding output to haul.
-func stockedMine(city *sc.City, r *sc.Robot) (*sc.Building, bool) {
-	rx, ry := r.Position()
+// nearest returns the closest active building of a type to (x, y), or nil.
+func nearest(city *sc.City, typ string, x, y float64) *sc.Building {
 	var best *sc.Building
-	bestDist, found := 0.0, false
+	bd := 0.0
 	for _, b := range city.Buildings() {
-		if b.Type() != sc.BuildingMining || b.Status() != sc.StatusActive {
-			continue
-		}
-		s := b.Storage()
-		if s.Ore+s.Metal < 6 {
+		if b.Type() != typ || b.Status() != sc.StatusActive {
 			continue
 		}
 		bx, by := b.Position()
-		d := absF(rx-float64(bx)) + absF(ry-float64(by))
-		if !found || d < bestDist {
-			best, bestDist, found = b, d, true
-		}
-	}
-	return best, found
-}
-
-// activeStation returns the nearest active Flying Station, or nil.
-func activeStation(city *sc.City, r *sc.Robot) *sc.Building {
-	rx, ry := r.Position()
-	var best *sc.Building
-	bestDist := 0.0
-	for _, b := range city.Buildings() {
-		if b.Type() != sc.BuildingFlyingStation || b.Status() != sc.StatusActive {
-			continue
-		}
-		bx, by := b.Position()
-		d := absF(rx-float64(bx)) + absF(ry-float64(by))
-		if best == nil || d < bestDist {
-			best, bestDist = b, d
+		if d := dist(x, y, bx, by); best == nil || d < bd {
+			best, bd = b, d
 		}
 	}
 	return best
 }
 
-// anyStation reports whether a Flying Station exists or is being built.
-func anyStation(city *sc.City) bool {
+// freeSpot returns the nearest discovered, unbuilt spot, preferring `want`.
+func freeSpot(city *sc.City, want string, x, y float64) ([2]int, bool) {
+	built := map[[2]int]bool{}
 	for _, b := range city.Buildings() {
-		if b.Type() == sc.BuildingFlyingStation {
-			return true
-		}
+		bx, by := b.Position()
+		built[[2]int{bx, by}] = true
 	}
-	return false
-}
-
-// deliverTarget returns where a hauler should drop: a construction site that
-// still needs a carried resource, else the Base (toBase=true).
-func deliverTarget(city *sc.City, base *sc.Building, inv sc.Inventory) (cell [2]int, toBase bool) {
-	for _, b := range city.Buildings() {
-		if b.Status() != sc.StatusConstructing {
+	var best [2]int
+	bd, rank, found := 0.0, 2, false
+	for _, s := range city.World().Spots() {
+		p := [2]int{s.X, s.Y}
+		if built[p] || s.Spot == nil || s.Spot.Remaining <= 0 {
 			continue
 		}
-		needOre, needMetal := siteNeeds(b)
-		if (needOre > 0 && inv.Ore > 0) || (needMetal > 0 && inv.Metal > 0) {
-			bx, by := b.Position()
-			return [2]int{bx, by}, false
+		rk := 1
+		if s.Spot.Resource == want {
+			rk = 0
+		}
+		if d := dist(x, y, s.X, s.Y); !found || rk < rank || (rk == rank && d < bd) {
+			best, bd, rank, found = p, d, rk, true
 		}
 	}
-	bx, by := base.Position()
-	return [2]int{bx, by}, true
+	return best, found
 }
 
-func siteNeeds(b *sc.Building) (needOre, needMetal int) {
-	c := b.Construction()
-	req, del := asMap(c["required"]), asMap(c["delivered"])
-	return num(req["ore"]) - num(del["ore"]), num(req["metal"]) - num(del["metal"])
-}
-
-// emptyNearBase returns a nearby cell with no building and no spot (for a station).
-func emptyNearBase(city *sc.City, base *sc.Building) ([2]int, bool) {
-	bx, by := base.Position()
-	built := builtCells(city)
-	spot := map[[2]int]bool{}
-	for _, s := range city.World().Spots() {
-		spot[[2]int{s.X, s.Y}] = true
-	}
-	for radius := 1; radius < 8; radius++ {
-		for dy := -radius; dy <= radius; dy++ {
-			for dx := -radius; dx <= radius; dx++ {
-				if abs(dx) != radius && abs(dy) != radius {
-					continue
-				}
-				p := [2]int{bx + dx, by + dy}
-				if !built[p] && !spot[p] {
-					return p, true
-				}
-			}
+// stockedMine returns the nearest active mine holding output worth hauling, or nil.
+func stockedMine(city *sc.City, x, y float64) *sc.Building {
+	var best *sc.Building
+	bd := 0.0
+	for _, b := range city.Buildings() {
+		if b.Type() != sc.BuildingMining || b.Status() != sc.StatusActive {
+			continue
+		}
+		if s := b.Storage(); s.Ore+s.Metal < 6 {
+			continue
+		}
+		bx, by := b.Position()
+		if d := dist(x, y, bx, by); best == nil || d < bd {
+			best, bd = b, d
 		}
 	}
-	return [2]int{}, false
+	return best
 }
 
-// explore flies outward to reveal more of the endless map (robots fan out).
-func explore(city *sc.City, r *sc.Robot) {
-	i := stepCount[r.ID]
-	stepCount[r.ID] = i + 1
-	dirs := [4][2]int{{6, 0}, {0, 6}, {-6, 0}, {0, -6}}
-	d := dirs[(i+len(r.ID))%4]
-	x, y := r.Position()
-	r.MoveTo(x+float64(d[0]), y+float64(d[1]))
-}
-
-func num(v any) int {
-	if f, ok := v.(float64); ok {
-		return int(f)
-	}
-	return 0
-}
-
-func asMap(v any) map[string]any {
-	if m, ok := v.(map[string]any); ok {
-		return m
-	}
-	return map[string]any{}
-}
-
-func abs(n int) int {
-	if n < 0 {
-		return -n
-	}
-	return n
-}
-
-func absF(f float64) float64 {
+func dist(x, y float64, cx, cy int) float64 { return abs(x-float64(cx)) + abs(y-float64(cy)) }
+func idSum(id string) (n int)               { for _, c := range []byte(id) { n += int(c) }; return }
+func abs(f float64) float64 {
 	if f < 0 {
 		return -f
 	}
