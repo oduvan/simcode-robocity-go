@@ -4,7 +4,7 @@ This repo controls a city in **SimCode — Robot City Builder**. `main.go` is on
 that drives the whole robot fleet; **push to the default branch and the platform hot-reloads**
 it into your live city.
 
-- **Edit `main.go`** to change how your robots behave (scout, build, mine, haul, grow).
+- **Edit `main.go`** to change how your robots behave (fly out, place mines, haul, charge, grow).
 - **Push** → your city updates in real time.
 - No manifest, no extra setup — the `simcode` SDK is provided by the platform at runtime.
 

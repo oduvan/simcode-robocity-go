@@ -27,18 +27,29 @@ immediately act on the new program and you watch the city evolve at your city's 
 Goal of the reference module: **grow the city**. The loop the starter implements:
 
 ```
-explore by moving (reveal the map) → build a Mining building on a resource spot → mine ore/metal
-  → haul it to the Base → the Base produces more robots → more robots → faster growth
+fly into the fog (reveal the map) → place a Mining site on a resource spot (World().Build) →
+  the mine digs itself → haul its output to the Base → the Base produces more robots →
+  more robots → faster growth (recharge on a Flying Station so robots keep flying)
 ```
 
-- **Resources:** `ore` and `metal`, found at finite **spots**. Mine them into a Mining
-  building's local storage, then a robot **picks up** and **hauls** to the Base/Storage.
+- **The world is endless & continuous.** Robots have **float** `(x, y)` positions and **fly**
+  in straight lines from any point to any point, ignoring terrain and each other (no
+  pathfinding, multiple robots may share a spot). They interact with a building by their
+  **rounded cell** (`r.Cell()`). Flying **spends energy** (∝ distance); run the battery to zero
+  **mid-flight and the robot is destroyed** — its cargo vanishes. Recharge by landing on a
+  **Flying Station** and calling `r.Charge()`.
+- **Resources:** `ore` and `metal`, found at finite **spots**. A **Mining building mines
+  autonomously** into its own storage — there is no mine command; a robot only **picks up**
+  the output and **hauls** it to the Base/Storage/a build site.
 - **Buildings:** **Base** (pre-placed, one; produces robots from its store — *not* withdrawable),
-  **Mining** (placed on a spot; cap'd storage), **Storage** (cheap, big buffer), **Road**
-  (cheap; robots move faster on it). All but the Base are built: `StartConstruction` →
-  `Drop` resources to fulfill the recipe → `Connect` (more connected robots finish faster).
-- **Construction recipe (Mining):** 6 ore + 3 metal. The fleet **starts with 2 robots**, each
-  carrying a 6/3 kit (enough to build one mine). Robots the Base produces also arrive with a kit.
+  **Mining** (placed on a live spot; auto-mines into cap'd storage), **Storage** (cheap, big
+  buffer), **Flying Station** (robots land and recharge). Every building except the Base is
+  **built autonomously**: place a site with `city.World().Build(type, x, y)`, robots **`Drop`**
+  resources to fulfil the recipe, and the site **self-completes** once supplied — no connect
+  step, no robot labor.
+- **Construction recipe (Mining):** 6 ore + 3 metal. The fleet **starts with a couple of
+  robots**, each carrying a 6/3 kit (enough to place one mine) and a **full battery**. Robots
+  the Base produces also arrive with a kit and full battery.
 - **Same map for everyone.** The module fixes the world seed, so *every* city of this type
   starts from the **identical canonical map** — the only variable is your code.
 
@@ -71,51 +82,53 @@ Every handler gets one `sc.Event`:
 
 | Event | `e.Payload` keys | Fires when |
 | --- | --- | --- |
-| **`sc.EventIdle`** | — | **a robot has no command and needs one** — after any command completes, or right after spawn. Fires once per free transition (not every tick). **This is the main hook: handle it, decide, issue the next command.** |
+| **`sc.EventIdle`** | — | **a robot has no command and needs one** — after any command completes, or right after spawn. Re-fires every few ticks while it stays free (not every tick). **This is the main hook: handle it, decide, issue the next command.** |
 | `sc.EventSpawn` | — | a robot enters the world (or your code reloads). |
-| `sc.EventArrived` | `position` | a `MoveTo` reached its target. |
-| `sc.EventBlocked` | `reason` | a move/action couldn't complete. |
-| `sc.EventConstructionStarted` | `building_id`, `type` | a construction platform was placed. |
-| `sc.EventConstructionComplete` | `building_id`, `type` | a building finished (now active). |
-| `sc.EventMiningComplete` | `resource`, `amount` | a `Mine` produced into the mine's store. |
-| `sc.EventResourceDelivered` | `building_id` | a `Drop` deposited into a building. |
-| `sc.EventSpotDepleted` | `building_id` | the resource spot a robot was mining ran out. |
+| `sc.EventArrived` | `position` | a `MoveTo` flight reached its target. |
+| `sc.EventBlocked` | `reason` | a move/action couldn't complete (e.g. `no_station`). |
+| `sc.EventConstructionStarted` | `building_id`, `type` | a `World().Build(...)` placed a site. |
+| `sc.EventResourceDelivered` | `building_id`, `ore`, `metal` | a `Drop` deposited into a site/store. |
+| `sc.EventConstructionComplete` | `building_id`, `type` | a site finished building (now active). |
+| `sc.EventSpotDepleted` | `building_id` | a Mining building's resource spot ran out. |
 | `sc.EventStorageFull` | `building_id` | a building's storage is full. |
 | `sc.EventInventoryFull` | — | a robot can't carry more. |
 | `sc.EventRobotProduced` | `robot_id` | the Base finished a new robot. |
+| `sc.EventRobotDestroyed` | `position`, `reason` | a robot ran out of energy **mid-flight** — gone, cargo lost. |
+| `sc.EventChargeComplete` | — | a robot on a Flying Station finished charging (battery full). |
 | `sc.EventMessage` | (your payload) | another robot sent you a message via `Send`. |
 
 The cleanest controller is built around **`sc.EventIdle`**: it fires exactly when a robot is
 free, so you don't poll and you don't have to chain every completion event by hand. The
 starter is essentially one `EventIdle` handler that reads the robot's live state and issues its
 next move. Subscribe to the others only when you want their payload (e.g.
-`e.Payload["position"]`). Discovery happens **by moving** — a robot reveals a radius (~5) around
-itself as it moves; to explore, just `MoveTo` a cell in the fog. There is no scan command.
-**Don't subscribe to `sc.EventTick` to poll** — drive everything from `EventIdle`.
+`e.Payload["position"]`). Discovery happens **by flying** — a robot reveals a radius (~5) around
+itself as it moves; to explore, just `MoveTo` a point in the fog. There is no separate reveal
+command. **Don't subscribe to `sc.EventTick` to poll** — drive everything from `EventIdle`.
 
 ### Command a robot — `r := city.Robot(id)`
 A command tells one robot to do one thing. The robot runs **only one at a time** — issuing a
-new command replaces the current one. Timed commands (move/mine/connect) finish over several
-ticks and fire a completion event; instant ones resolve right away. **Either way, when the
-robot is free again it fires `EventIdle`** — so you rarely need the specific completion events.
-All commands return `*Robot`, so they chain.
+new command replaces the current one. Timed commands (`MoveTo`, `Charge`) finish over several
+ticks and fire a completion event; instant ones (`PickUp`, `Drop`) resolve right away.
+**Either way, when the robot is free again it fires `EventIdle`** — so you rarely need the
+specific completion events. All commands return `*Robot`, so they chain. Placing a building is
+a **world** call, `city.World().Build(...)`, not bound to a robot.
 
 | Call | What it does | Completes with |
 | --- | --- | --- |
-| `r.MoveTo(x, y)` | Walk toward cell `(x, y)`, automatically routing **around** other robots. Reveals the map (radius ~5) as it goes — this is how you explore. | `arrived` (or `blocked`), then `idle` |
-| `r.Step("N"\|"S"\|"E"\|"W")` | Move exactly one cell in a compass direction. | `arrived` / `blocked` |
-| `r.StartConstruction(sc.BuildingMining\|sc.BuildingStorage\|sc.BuildingRoad)` | Place a construction **platform** on the robot's current cell. `mining` requires a resource spot there. Instant. | `construction_started` |
-| `r.Connect()` | Join the construction platform on (or next to) the cell and build it. More robots connected → it finishes faster; the robot is busy until done. | `construction_complete` |
-| `r.Mine()` | Mine the **Mining building on the robot's cell** once — ore/metal goes into *that building's* store, not the robot's inventory. | `mining_complete` (or `storage_full` / `spot_depleted`) |
-| `r.PickUp(ore, metal)` | Move resources from the building on the cell **into the robot's inventory** (up to carry capacity). **No args = take everything that fits.** Instant. | resolves, then `idle` |
-| `r.Drop(ore, metal)` | Deposit inventory into the building on **(or adjacent to)** the cell — supply a construction platform, or feed the Base/Storage. **No args = drop all.** Instant. | `resource_delivered` |
+| `r.MoveTo(x, y float64)` | **Fly** in a straight line to float `(x, y)`, ignoring terrain/other robots. Spends energy with distance; reveals the map (radius ~5) as it goes — this is how you explore. | `arrived` / `blocked` / `robot_destroyed` |
+| `city.World().Build(sc.BuildingMining\|sc.BuildingStorage\|sc.BuildingFlyingStation, x, y int)` | Place a self-building construction **site** at `(x, y)`. `mining` must be on a live resource spot; the Base isn't buildable. **Not** bound to a robot. | `construction_started` / `blocked` |
+| `r.PickUp(ore, metal)` | Grab resources from the building on the robot's cell **into its inventory** (up to carry capacity). **No args = take everything that fits.** Instant. | resolves, then `idle` |
+| `r.Drop(ore, metal)` | Release inventory into the building/site on the robot's cell — supply a build site, or feed the Base/Storage. **No args = drop all.** Instant. | `resource_delivered` |
+| `r.Charge()` | Charge on the **Flying Station on the robot's cell**; holds the robot until the battery is full. | `charge_complete` / `blocked` (`no_station`) |
 | `r.Send(targetID, payload)` | Send a message to another robot. | the peer gets an `EventMessage` |
 | `r.Cancel()` | Abort the current command; the robot goes free. | `idle` |
 | `r.Log("…")` | Write a line to the city log (debug your code; surfaces in the MCP tools / logs). | — |
 
-**Position-based:** `Mine`, `Connect`, `StartConstruction`, `PickUp`, `Drop` act on whatever is
-on the robot's **current cell** (`Drop`/`Connect` also reach an **adjacent** cell). So to mine,
-first `MoveTo` the mine; to haul, `PickUp` on the mine then `MoveTo` the Base and `Drop`.
+**Position-based:** `PickUp`, `Drop`, and `Charge` act on whatever building/site is on the
+robot's **current (rounded) cell** (`r.Cell()`). So to haul, `MoveTo` the mine, `PickUp`, then
+`MoveTo` the Base and `Drop`; to recharge, `MoveTo` a Flying Station then `Charge()`. Mining and
+construction are **autonomous**, so there are no robot-driven mining, build-wiring, site-placing,
+or single-step-move commands — robots only fly, haul, and charge.
 
 ### Command the Base — `city.Base()`
 The Base isn't built or moved; command it directly to grow the fleet.
@@ -128,18 +141,23 @@ The Base isn't built or moved; command it directly to grow the fleet.
 ### Read the world (read fresh each event)
 You never hold a live object — these read the current state when your handler runs.
 
-- **Robots:** `city.Robot(id)` → `r.ID`, `r.Type()`, `r.Position()` `(x, y)`, `r.Facing()`,
-  `r.State()` (`idle`/`moving`/`mining`/`building`/`hauling`/`blocked`), `r.Command()`,
-  `r.Inventory()` (`.Ore`, `.Metal`, `.Capacity`, `.Free()`, `.IsFull()`), `r.Here()`
-  (`.X`, `.Y`, `.Terrain`, `.Spot`, `.Building` — what's on its cell), and per-robot state
-  `r.Memory()` / `r.SetMemory(map[string]any)`.
+- **Robots:** `city.Robot(id)` → `r.ID`, `r.Type()`, `r.Position()` → **float** `(x, y float64)`,
+  `r.Cell()` → the **rounded** `(x, y int)` used for position-based actions, `r.Facing()`,
+  `r.State()` (`idle`/`moving`/`charging`/`hauling`/`blocked`), `r.Command()`, `r.Energy()`
+  (battery, `float64`, 0…cap), `r.Inventory()` (`.Ore`, `.Metal`, `.Capacity`, `.Free()`,
+  `.IsFull()`), `r.Here()` (`.X`, `.Y`, `.Terrain`, `.Spot`, `.Building` — what's on its cell),
+  and per-robot state `r.Memory()` / `r.SetMemory(map[string]any)`.
 - **Buildings:** `city.Buildings()` `[]*Building`, `city.Base()`. A `*Building` exposes
-  `.Type()` (`base`/`mining`/`storage`/`road`), `.Position()`, `.Status()`
-  (`constructing`/`active`), `.Storage()` (`.Ore`/`.Metal`/`.Capacity`/`.Free()`), `.Spot()`
-  (Mining), `.Production()` (Base), `.Construction()` (while building).
-- **World:** `city.World()` → `.Tick()`, `.Size()` `(w, h)`, `.Seed()`, `.Discovered()`, and
-  `.Spots()` — the resource spots **discovered so far** (each `Cell` has `.X`, `.Y`, and
-  `.Spot.Resource` / `.Spot.Remaining`).
+  `.Type()` (`base`/`mining`/`storage`/`flying_station`), `.Position()`, `.Status()`
+  (`constructing`/`active` — compare with `sc.StatusActive`/`sc.StatusConstructing`),
+  `.Storage()` (`.Ore`/`.Metal`/`.Capacity`/`.Free()`), `.Spot()` (Mining — auto-mines into
+  its storage), `.Production()` (Base), `.Construction()` (while building — sites self-complete,
+  no connect step).
+- **World:** `city.World()` → `.Tick()`, `.Size()` (bounding box of the **discovered** region,
+  not a fixed extent), `.Seed()`, `.Discovered()`, `.Spots()` — the resource spots
+  **discovered so far** (each `Cell` has `.X`, `.Y`, and `.Spot.Resource` / `.Spot.Remaining`) —
+  and `.Build(type, x, y int)` to place a construction site. The world is **endless**, generated
+  lazily as robots fly into the fog.
 - **City-wide store:** `city.SetStore(key, value)` / `city.GetStore(key)` `(any, bool)` — your
   own state that survives across events (and code reloads).
 
@@ -167,12 +185,13 @@ improvements over the starter:
 
 - **Keep the Base fed with *both* ore and metal** — it needs both to produce robots; a fleet
   that only mines ore stalls.
-- **Build on the nearest spot, not a fixed direction.** The starter's explore-one-way logic
-  can wedge a robot against the map edge — prefer the closest known spot from
-  `city.World().Spots()`, and only explore when none is known.
-- Reduce robots blocking each other near the Base; build **Storage** as a buffer and **Roads**
-  for speed; call `city.Base().BuildRobot(...)` once resources allow.
-- **Drive it purely by `sc.EventIdle`** — every handler must issue the robot's next command, so
-  no robot is ever left idle with no future event. Since `idle` re-fires while a robot stays
-  free, a robot is never permanently stuck; if a path would leave one with nothing to do, send
-  it into unexplored ground (moving reveals new map).
+- **Build on the nearest spot, not a fixed direction.** Prefer the closest known spot from
+  `city.World().Spots()`, and only fly into the fog to explore when none is known — the world
+  is endless, so there's no edge to wedge against, just more map to reveal.
+- **Manage energy.** Build a **Flying Station** early and `r.Charge()` robots **before** they
+  run dry — a robot that runs out of energy mid-flight is destroyed and its cargo lost. Add
+  **Storage** as a buffer; call `city.Base().BuildRobot(...)` once resources allow.
+- **Drive it purely by `sc.EventIdle`** — every handler must issue the robot's next command
+  (fly / haul / `World().Build` / `Charge`), so no robot is ever left idle with no future
+  event. Since `idle` re-fires while a robot stays free, a robot is never permanently stuck; if
+  a path would leave one with nothing to do, fly it into unexplored ground (flying reveals new map).
