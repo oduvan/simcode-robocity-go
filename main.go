@@ -42,6 +42,7 @@ func main() {
 			if atBase {
 				r.Charge()
 			} else {
+				r.Log("low battery — returning to base to charge")
 				r.MoveTo(float64(bx), float64(by))
 			}
 			return
@@ -51,6 +52,7 @@ func main() {
 		// explores new ground instead of repeating the last one.
 		if atBase {
 			trip[r.ID]++
+			r.Log("charged — heading out to explore new ground")
 		}
 		d := dirs[(idSum(r.ID)+trip[r.ID])%len(dirs)]
 		r.MoveTo(x+float64(d[0])*5, y+float64(d[1])*5)
