@@ -18,14 +18,14 @@ seconds — and only push once it behaves. **Install it and use it on every chan
 
 ```bash
 go install github.com/oduvan/simcode-robocity-go-tools/cmd/robocity-sim@latest
-export SIMCODE_TOKEN=...   # your MCP token (dashboard → "Connect via MCP")
 
-robocity-sim run .          # tests THIS city's current state (auto-detected)
+robocity-sim run .          # tests THIS city's current state (auto-detected, no token)
 robocity-sim run . --json   # machine-readable (parse summary + feed)
 ```
 
-Run it **inside this repo** with your token set — the tool auto-detects which city
-this repo is and fetches its live state. Your `main.go` runs **unchanged** — the tool
+Run it **inside this repo** — a city's live state is public, so **no token needed**;
+it auto-detects which city this repo is and fetches its current state. Your `main.go`
+runs **unchanged** — the tool
 swaps the SDK for a local engine-backed one via a temporary `go.work` (your `go.mod`
 is untouched) and drives `city.Run()` locally. Read the `SUMMARY`: `robots destroyed`
 should be **0**, and `ore/metal mined` + `buildings` should grow if the city is
