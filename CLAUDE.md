@@ -33,6 +33,15 @@ developing. A live run is *approximate* (a quick "does it work now" check, not a
 perfect sim). Only push after a local run looks right. See that repo's `CLAUDE.md`
 for full usage.
 
+> **Check your code with `robocity-sim run .` — NOT `go build` / `go vet`.** The
+> simulator compiles `main.go` against a **bundled** copy of the SDK (wired in via a
+> temporary `go.work`) *and* runs it against the engine, so you verify **behaviour**,
+> not just that it compiles. A plain `go build` / `go vet` tries to **fetch the
+> published SDK over the network**, which fails in sandboxed / CI / offline
+> environments with a confusing auth error
+> (`could not read Password … terminal prompts disabled`) that has nothing to do with
+> your code. So `robocity-sim run .` is the one reliable way to check a controller.
+
 ## How it works (the model)
 
 - **One program, whole fleet.** `main.go` controls every robot, addressed by **id**.
