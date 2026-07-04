@@ -12,23 +12,27 @@ immediately act on the new program and you watch the city evolve at your city's 
 ## ⚡ Test locally BEFORE you push (do this every iteration)
 
 Pushing to see the result is slow. There's a **local simulator** that runs your
-`main.go` against a faithful offline copy of the game engine — no network, no Redis, no
-deploy wait — so you can iterate in seconds and only push once it behaves. **Install it
-and use it on every change.**
+`main.go` against an offline copy of the game engine, **seeded from your city's
+CURRENT state**, so you can check "does this actually work if I push it *now*?" in
+seconds — and only push once it behaves. **Install it and use it on every change.**
 
 ```bash
 go install github.com/oduvan/simcode-robocity-go-tools/cmd/robocity-sim@latest
+export SIMCODE_TOKEN=...   # your MCP token (dashboard → "Connect via MCP")
 
-robocity-sim run . --ticks 500        # human-readable feed + summary
-robocity-sim run . --ticks 500 --json # machine-readable (parse summary + feed)
+robocity-sim run .          # tests from THIS city's current state (auto-detected)
+robocity-sim run . --json   # machine-readable (parse summary + feed)
+robocity-sim run . --fresh  # or a clean seed-0 world (a new city / a baseline)
 ```
 
-Your `main.go` runs **unchanged** — the tool swaps the SDK for a local engine-backed
-one via a temporary `go.work` (your `go.mod` is untouched) and drives `city.Run()`
-locally. Read the `SUMMARY`: `robots destroyed` should be **0**, and `ore/metal mined` +
-`buildings` should grow if the city is developing (the starter only explores, so it
-mines nothing — beat that). It's **deterministic** (same seed → same run). Only push
-after a local run looks right. See that repo's `CLAUDE.md` for full usage.
+Run it **inside this repo** with your token set — the tool auto-detects which city
+this repo is and fetches its live state. Your `main.go` runs **unchanged** — the tool
+swaps the SDK for a local engine-backed one via a temporary `go.work` (your `go.mod`
+is untouched) and drives `city.Run()` locally. Read the `SUMMARY`: `robots destroyed`
+should be **0**, and `ore/metal mined` + `buildings` should grow if the city is
+developing. A live run is *approximate* (a quick "does it work now" check, not a
+perfect sim). Only push after a local run looks right. See that repo's `CLAUDE.md`
+for full usage.
 
 ## How it works (the model)
 
