@@ -17,3 +17,17 @@ main.go        # your controller (the only thing that runs)
 go.mod         # module + simcode SDK dependency
 CLAUDE.md      # the SDK + game reference
 ```
+
+## Test it locally before you push
+
+There's a local tool that runs your `main.go` against your city's **current state**,
+so you can check "does this actually work if I push it now?" in seconds:
+
+```bash
+go install github.com/oduvan/simcode-robocity-go-tools/cmd/robocity-sim@latest
+export SIMCODE_TOKEN=...   # dashboard → "Connect via MCP"
+robocity-sim run .        # tests THIS city's current state
+```
+
+Run it inside this repo with your token set — it auto-detects your city. See
+[`CLAUDE.md`](CLAUDE.md) for full usage.
