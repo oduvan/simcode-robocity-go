@@ -10,6 +10,8 @@
 package main
 
 import (
+	"math"
+
 	sc "github.com/lyabah/simcode-sdk-go"
 )
 
@@ -18,8 +20,8 @@ import (
 var dirs = [8][2]int{{1, 0}, {1, 1}, {0, 1}, {-1, 1}, {-1, 0}, {-1, -1}, {0, -1}, {1, -1}}
 
 const (
-	exploreHop = 5  // world units to fly per exploration step
-	lowBattery = 45 // below this, head to the Base (a charging pad) and recharge
+	exploreHop   = 5  // world units to fly per exploration step
+	chargeMargin = 15 // spare battery to keep on top of the trip home
 )
 
 var city *sc.City
@@ -32,10 +34,13 @@ func main() {
 
 func onIdle(e sc.Event) {
 	r := city.Robot(e.Robot)
+	x, y := r.Position()
 
-	// Stay alive: a robot that runs its battery to zero mid-flight is destroyed. When
-	// low, fly to the Base at the origin (it doubles as a charging pad) and recharge.
-	if r.Energy() < lowBattery {
+	// Stay alive: a robot that runs its battery to zero mid-flight is destroyed, so head
+	// back to the Base to recharge WHILE there's still enough energy to reach it. The Base
+	// sits at the origin and doubles as a charging pad. (Distance-aware, not a fixed
+	// threshold — otherwise a robot can wander further than it can fly back from.)
+	if home := math.Hypot(x, y); r.Energy() < home+chargeMargin {
 		if cx, cy := r.Cell(); cx == 0 && cy == 0 {
 			r.Charge()
 		} else {
@@ -53,6 +58,5 @@ func onIdle(e sc.Event) {
 	n++
 	r.SetMemory(map[string]any{"hop": n})
 	d := dirs[n%len(dirs)]
-	x, y := r.Position()
 	r.MoveTo(x+float64(d[0]*exploreHop), y+float64(d[1]*exploreHop))
 }
