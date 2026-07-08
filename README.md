@@ -26,13 +26,10 @@ CLAUDE.md      # the SDK + game reference
 
 ## Test it locally before you push
 
-There's a local tool that runs your `main.go` against your city's **current state**,
-so you can check "does this actually work if I push it now?" in seconds:
+Local testing runs your controller against the **real game engine** (the exact engine the
+server runs), not a re-implementation. For Go, the SDK's real-engine local mode exists but a
+clean one-command runner (`robocity-sim`) is **still pending** — see the honest status and the
+current options (compile-check, the identical **Python** local runner, push + observe) in
+[`CLAUDE.md`](CLAUDE.md).
 
-```bash
-go install github.com/oduvan/simcode-robocity-go-tools/cmd/robocity-sim@latest
-robocity-sim run .        # tests THIS city's current state (no token needed)
-```
-
-Run it inside this repo — a city's live state is public, so no token is needed; it
-auto-detects your city from the git remote. See [`CLAUDE.md`](CLAUDE.md) for full usage.
+> Don't `go install …/simcode-robocity-go-tools` — that older re-implementation is retired.

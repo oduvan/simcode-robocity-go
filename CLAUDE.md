@@ -9,38 +9,38 @@ immediately act on the new program and you watch the city evolve at your city's 
 > This is a **user code repo**, not the platform. You only write the controller; the
 > `simcode` SDK, the world, the rules, and the robots come from the platform.
 
-## ⚡ Test locally BEFORE you push (do this every iteration)
+## ⚡ Test locally BEFORE you push
 
-Pushing to see the result is slow. There's a **local simulator** that runs your
-`main.go` against an offline copy of the game engine, **seeded from your city's
-CURRENT state**, so you can check "does this actually work if I push it *now*?" in
-seconds — and only push once it behaves. **Install it and use it on every change.**
+Pushing to see the result is slow, so the goal is to check your `main.go` against the
+**real game engine** — the exact engine the server runs — before you push.
 
-```bash
-go install github.com/oduvan/simcode-robocity-go-tools/cmd/robocity-sim@latest
+**How it works today (honest status).** The `simcode` Go SDK ships a local mode that
+drives your `main.go` against the **real** engine (`game/engineapi`, the same stateless
+tick the live server uses) entirely offline — your controller runs **unchanged**, only
+the transport is swapped. It lives behind the `simcode_local` build tag and is wired in
+with a `go.work` that adds the engine module, then launched with `SIMCODE_LOCAL=1`. That
+machinery is **real and tested** inside the SDK — but it currently needs the engine
+module on your `go.work`, so it is **not yet a clean one-command experience** for a city
+repo like this one.
 
-robocity-sim run .          # tests THIS city's current state (auto-detected, no token)
-robocity-sim run . --json   # machine-readable (parse summary + feed)
-```
+**The remaining step** is a packaged **`robocity-sim`** CLI that sets that `go.work` up
+for you and runs the check in one command (`robocity-sim run .`). That polished Go entry
+point is **still pending** — this section will switch to it once it ships. Until then:
 
-Run it **inside this repo** — a city's live state is public, so **no token needed**;
-it auto-detects which city this repo is and fetches its current state. Your `main.go`
-runs **unchanged** — the tool
-swaps the SDK for a local engine-backed one via a temporary `go.work` (your `go.mod`
-is untouched) and drives `city.Run()` locally. Read the `SUMMARY`: `robots destroyed`
-should be **0**, and `ore/metal mined` + `buildings` should grow if the city is
-developing. A live run is *approximate* (a quick "does it work now" check, not a
-perfect sim). Only push after a local run looks right. See that repo's `CLAUDE.md`
-for full usage.
+- If you're prototyping *logic*, the fastest real-engine check is the **Python** local
+  runner (`python -m simcode.local`, in the Python starter) — the engine and rules are
+  byte-for-byte identical, so it's a faithful preview of behaviour.
+- For Go, `go build ./...` confirms your controller **compiles**. Heads-up: a plain build
+  tries to **fetch the published SDK over the network**, which fails in offline / CI /
+  sandboxed environments with a confusing auth error
+  (`could not read Password … terminal prompts disabled`) that has nothing to do with
+  your code.
+- Then **push and watch the live city + logs** (or the platform's MCP tools) to confirm
+  behaviour.
 
-> **Check your code with `robocity-sim run .` — NOT `go build` / `go vet`.** The
-> simulator compiles `main.go` against a **bundled** copy of the SDK (wired in via a
-> temporary `go.work`) *and* runs it against the engine, so you verify **behaviour**,
-> not just that it compiles. A plain `go build` / `go vet` tries to **fetch the
-> published SDK over the network**, which fails in sandboxed / CI / offline
-> environments with a confusing auth error
-> (`could not read Password … terminal prompts disabled`) that has nothing to do with
-> your code. So `robocity-sim run .` is the one reliable way to check a controller.
+> **Retired:** older docs told you to `go install …/simcode-robocity-go-tools/cmd/robocity-sim`.
+> That standalone re-implementation is **superseded** — local testing now runs the *real*
+> engine via the SDK (above), so don't install the old tool.
 
 ## How it works (the model)
 
@@ -251,8 +251,9 @@ You never hold a live object — these read the current state when your handler 
 ## Working in this repo with Claude Code
 
 The thing to improve is the **strategy** in `main.go`. The world is fixed, so better code =
-a better city. You can't run the engine locally; iterate by reading the logic carefully and
-checking the live city + logs after a push (or via the platform's MCP tools). High-leverage
+a better city. A clean one-command Go local check is still pending (see "Test locally" above);
+until it ships, sanity-check logic with the Python local runner and/or `go build`, then iterate
+by checking the live city + logs after a push (or via the platform's MCP tools). High-leverage
 improvements over the starter:
 
 - **Bootstrap *both* an ore mine and a metal mine** — the Base quest needs both ore and metal,
