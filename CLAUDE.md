@@ -253,9 +253,9 @@ You never hold a live object — these read the current state when your handler 
 ## Working in this repo with Claude Code
 
 The thing to improve is the **strategy** in `main.go`. The world is fixed, so better code =
-a better city. A clean one-command Go local check is still pending (see "Test locally" above);
-until it ships, sanity-check logic with the Python local runner and/or `go build`, then iterate
-by checking the live city + logs after a push (or via the platform's MCP tools). High-leverage
+a better city. **Iterate with the local check:** run `robocity-sim run main.go` after every
+edit (it runs your controller against the real engine — see "Test locally" above), then
+confirm on the live city + logs after a push (or via the platform's MCP tools). High-leverage
 improvements over the starter:
 
 - **Bootstrap *both* an ore mine and a metal mine** — the Base quest needs both ore and metal,
