@@ -11,36 +11,38 @@ immediately act on the new program and you watch the city evolve at your city's 
 
 ## ⚡ Test locally BEFORE you push
 
-Pushing to see the result is slow, so the goal is to check your `main.go` against the
-**real game engine** — the exact engine the server runs — before you push.
+Pushing to see the result is slow. You can run your `main.go` against the **real game
+engine** on your machine — the *exact* engine the server runs (downloaded on demand,
+**not** a re-implementation) — so checking "does this actually work if I push it *now*?"
+takes seconds. **Install the tool once, then run the local check on every change.**
 
-**How it works today (honest status).** The `simcode` Go SDK ships a local mode that
-drives your `main.go` against the **real** engine (`game/engineapi`, the same stateless
-tick the live server uses) entirely offline — your controller runs **unchanged**, only
-the transport is swapped. It lives behind the `simcode_local` build tag and is wired in
-with a `go.work` that adds the engine module, then launched with `SIMCODE_LOCAL=1`. That
-machinery is **real and tested** inside the SDK — but it currently needs the engine
-module on your `go.work`, so it is **not yet a clean one-command experience** for a city
-repo like this one.
+```bash
+go install github.com/oduvan/simcode-robocity-go-tools/cmd/robocity-sim@latest
 
-**The remaining step** is a packaged **`robocity-sim`** CLI that sets that `go.work` up
-for you and runs the check in one command (`robocity-sim run .`). That polished Go entry
-point is **still pending** — this section will switch to it once it ships. Until then:
+robocity-sim run main.go                 # run your controller vs the REAL engine
+robocity-sim run main.go --ticks 300     # simulate more ticks
+robocity-sim run main.go --json          # machine-readable summary
+```
 
-- If you're prototyping *logic*, the fastest real-engine check is the **Python** local
-  runner (`python -m simcode.local`, in the Python starter) — the engine and rules are
-  byte-for-byte identical, so it's a faithful preview of behaviour.
-- For Go, `go build ./...` confirms your controller **compiles**. Heads-up: a plain build
-  tries to **fetch the published SDK over the network**, which fails in offline / CI /
-  sandboxed environments with a confusing auth error
-  (`could not read Password … terminal prompts disabled`) that has nothing to do with
-  your code.
-- Then **push and watch the live city + logs** (or the platform's MCP tools) to confirm
-  behaviour.
+The tool loads the engine over a small cgo bridge, so it needs a **C compiler**
+(`CGO_ENABLED=1` + gcc/clang — the default on macOS and most Linux) at install time. The
+**first run downloads the engine** from the server (`GET /api/engine/lib`) and **caches**
+it under `~/.cache/simcode/`, so later runs are instant — no build step, no token. Your
+`main.go` runs **unchanged**. Read the SUMMARY: `handler errors` must be **0**, `robots
+destroyed` should be **0**, and `buildings` / `discovered cells` should grow if the
+controller is doing something. The exit code is non-zero if any handler panicked, so you
+can gate a push on it.
 
-> **Retired:** older docs told you to `go install …/simcode-robocity-go-tools/cmd/robocity-sim`.
-> That standalone re-implementation is **superseded** — local testing now runs the *real*
-> engine via the SDK (above), so don't install the old tool.
+> **Check your code with `robocity-sim run main.go` — NOT `go run main.go`.** Running it
+> directly just starts the SDK runtime with no engine to talk to. `robocity-sim` drives
+> your handlers against the real engine tick by tick, so you verify **behaviour**.
+
+> **Platform note:** the engine library is a glibc-linked Linux/macOS build, so run local
+> tests on a normal glibc host (**not** Alpine/musl). To use a locally-built engine instead
+> of the download, point `SIMCODE_ENGINE_SO` at a `libengine.so`; `SIMCODE_SERVER` picks a
+> different server. `go build ./...` still confirms your controller **compiles** (heads-up:
+> a plain build fetches the published SDK over the network, which fails in offline/CI
+> sandboxes with a confusing auth error unrelated to your code).
 
 ## How it works (the model)
 
