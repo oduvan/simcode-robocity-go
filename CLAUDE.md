@@ -140,7 +140,7 @@ Every handler gets one `sc.Event`:
 | `sc.EventArrived` | `position` | a `MoveTo` flight reached its target. |
 | `sc.EventBlocked` | `reason` | a move/action couldn't complete (e.g. `no_station`). |
 | `sc.EventConstructionStarted` | `building_id`, `type` | a `World().Build(...)` placed a site. |
-| `sc.EventResourceDelivered` | `building_id`, `ore`, `metal` | a `Drop` deposited into a site/store. |
+| `sc.EventResourceDelivered` | `building_id`, `item`, `amount` | a `Drop` deposited into a site/store (one per item). |
 | `sc.EventConstructionComplete` | `building_id`, `type` | a site finished building (now active). |
 | `sc.EventSpotDepleted` | `building_id` | a Mining building's resource spot ran out. |
 | `sc.EventStorageFull` | `building_id` | a building's storage is full. |
@@ -172,8 +172,8 @@ a **world** call, `city.World().Build(...)`, not bound to a robot.
 | --- | --- | --- |
 | `r.MoveTo(x, y float64)` | **Fly** in a straight line to float `(x, y)`, ignoring terrain/other robots. Spends energy with distance; reveals the map (radius ~5) as it goes — this is how you explore. | `arrived` / `blocked` / `robot_destroyed` |
 | `city.World().Build(sc.BuildingMining\|sc.BuildingStorage\|sc.BuildingFlyingStation, x, y int)` | Place a self-building construction **site** at `(x, y)`. `mining` must be on a live resource spot; the Base isn't buildable. **Not** bound to a robot. | `construction_started` / `blocked` |
-| `r.PickUp(ore, metal)` | Grab resources from the building on the robot's cell **into its inventory** (up to carry capacity). **No args = take everything that fits.** Instant. | resolves, then `idle` |
-| `r.Drop(ore, metal)` | Release inventory into the building/site on the robot's cell — supply a build site, or feed the Base/Storage. **No args = drop all.** Instant. | `resource_delivered` |
+| `r.PickUp(item, amount)` | Grab `amount` of `item` from the building on the robot's cell **into its inventory** (e.g. `r.PickUp("ore", 6)`). Use `r.PickUpItem("ore")` for all of one item, `r.PickUpAll()` for everything that fits. Instant. | resolves, then `idle` |
+| `r.Drop(item, amount)` | Release `amount` of `item` into the building/site on the robot's cell — supply a build site, or feed the Base/Storage. Use `r.DropItem("metal")` for all of one item, `r.DropAll()` for everything held. Instant. | `resource_delivered` |
 | `r.Charge()` | Charge on the **Flying Station on the robot's cell**; holds the robot until the battery is full. | `charge_complete` / `blocked` (`no_station`) |
 | `r.Send(targetID, payload)` | Send a message to another robot. | the peer gets an `EventMessage` |
 | `r.Cancel()` | Abort the current command; the robot goes free. | `idle` |
@@ -188,7 +188,7 @@ or single-step-move commands — robots only fly, haul, and charge.
 ### The Base — the quest hub — `city.Base()`
 There's one Base; reach it via `city.Base()`. It **isn't built or commanded** — you feed it and
 read its objective:
-- **Feed it:** robots `Drop(ore, metal)` on the Base's cell. Its store is the **quest
+- **Feed it:** robots `Drop("ore", …)` / `Drop("metal", …)` (or `DropAll()`) on the Base's cell. Its store is the **quest
   accumulator**, capped per-resource at the requirement (excess stays on the robot). You
   **cannot `PickUp` from the Base.** It also doubles as a **charging pad** (`r.Charge()`).
 - **Read the objective:** `city.Base().Level()` (current level, starts at 1) and
@@ -216,14 +216,16 @@ You never hold a live object — these read the current state when your handler 
 - **Robots:** `city.Robot(id)` → `r.ID`, `r.Type()`, `r.Position()` → **float** `(x, y float64)`,
   `r.Cell()` → the **rounded** `(x, y int)` used for position-based actions, `r.Facing()`,
   `r.State()` (`idle`/`moving`/`charging`/`hauling`/`blocked`), `r.Command()`, `r.Energy()`
-  (battery, `float64`, 0…cap), `r.Inventory()` (`.Ore`, `.Metal`, `.Capacity`, `.Free()`,
-  `.IsFull()`), `r.Here()` (`.X`, `.Y`, `.Terrain`, `.Spot`, `.Building` — what's on its cell),
+  (battery, `float64`, 0…cap), `r.Inventory()` (a **`Store`** item map: `.Get("ore")`, `.Has("ore")`,
+  `.Items`, `.Total()`, `.Free()`, `.Capacity`, `.IsFull()`),
+  `r.Here()` (`.X`, `.Y`, `.Terrain`, `.Spot`, `.Building` — what's on its cell),
   and per-robot state `r.Memory()` / `r.SetMemory(map[string]any)`.
 - **Buildings:** `city.Buildings()` `[]*Building`, `city.Base()`, `city.Stations()`. A
   `*Building` exposes `.Type()` (`base`/`mining`/`storage`/`flying_station`), `.Position()`,
   `.Footprint()` `(w, h int)`, `.Status()` (`constructing`/`active` — compare with
-  `sc.StatusActive`/`sc.StatusConstructing`), `.Storage()` (`.Ore`/`.Metal`/`.Capacity`/
-  `.Free()`), `.Spot()` (Mining — auto-mines into its storage), `.Level()` + `.Quest()` (Base),
+  `sc.StatusActive`/`sc.StatusConstructing`), `.Storage()` (a **`Store`** item map: `.Get("ore")`,
+  `.Has("ore")`, `.Items`, `.Total()`, `.Free()`, `.Capacity`), `.Spot()` (Mining — auto-mines
+  into its storage), `.Level()` + `.Quest()` (Base),
   `.Production()` (Flying Station), `.Construction()` (while building — sites self-complete, no
   connect step). `.Quest()` / `.Construction()` are raw `map[string]any` bags with nested
   `{ore,metal}` objects.
