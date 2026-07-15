@@ -80,7 +80,7 @@ pick up a kit from the starting Storage → fly to a resource spot →
 
 - **Robots start EMPTY.** There's no free kit — a robot carries nothing until it picks
   something up. Your capital is a **Storage building pre-placed next to the Base**, stocked
-  with **30 ore / 15 metal**; robots `PickUp` from it to get building materials.
+  with **45 ore / 25 metal**; robots `PickUp` from it to get building materials.
 - **The world is endless & continuous.** Robots have **float** `(x, y)` positions and **fly**
   in straight lines from any point to any point, ignoring terrain and each other (no
   pathfinding, multiple robots may share a spot). They interact with a building by their
@@ -103,37 +103,39 @@ them; they do the work.
 
   | Tier | Building (`sc.` constant) | Build cost | Recipe (per batch) | Ticks |
   | --- | --- | --- | --- | --- |
-  | T1 | Smelter `sc.BuildingSmelter` | 8 ore + 4 metal | 2 ore → 1 `plate` | 4 |
-  | T1 | Wire Mill `sc.BuildingWireMill` | 4 ore + 8 metal | 2 metal → 1 `wire` | 4 |
-  | T1 | Glassworks `sc.BuildingGlassworks` | 6 ore + 4 crystal | 2 crystal → 1 `glass` | 4 |
-  | T1 | Kiln `sc.BuildingKiln` | 6 ore + 4 carbon | 2 carbon → 1 `coke` | 4 |
-  | T2 | Assembler `sc.BuildingAssembler` | 6 plate + 3 wire | 2 plate + 1 wire → 1 `part` | 6 |
-  | T2 | Electronics Lab `sc.BuildingElectronicsLab` | 6 wire + 3 glass | 2 wire + 1 glass → 1 `circuit` | 6 |
-  | T2 | Alloy Furnace `sc.BuildingAlloyFurnace` | 4 plate + 4 coke | 1 plate + 2 coke → 1 `alloy` | 6 |
-  | T3 | Module Assembler `sc.BuildingModuleAssembler` | 4 part + 2 circuit | 2 part + 1 circuit → 1 `module` | 8 |
-  | T3 | Frame Shop `sc.BuildingFrameShop` | 3 alloy + 2 part | 1 alloy + 2 plate → 1 `frame` | 8 |
+  | T1 | Smelter `sc.BuildingSmelter` | 10 ore + 6 metal | 2 ore → 1 `plate` | 4 |
+  | T1 | Wire Mill `sc.BuildingWireMill` | 6 ore + 10 metal | 2 metal → 1 `wire` | 4 |
+  | T1 | Glassworks `sc.BuildingGlassworks` | 10 ore + 6 crystal | 2 crystal → 1 `glass` | 4 |
+  | T1 | Kiln `sc.BuildingKiln` | 10 ore + 6 carbon | 2 carbon → 1 `coke` | 4 |
+  | T2 | Assembler `sc.BuildingAssembler` | 8 plate + 6 wire | 2 plate + 1 wire → 1 `part` | 6 |
+  | T2 | Electronics Lab `sc.BuildingElectronicsLab` | 8 wire + 6 glass | 2 wire + 1 glass → 1 `circuit` | 6 |
+  | T2 | Alloy Furnace `sc.BuildingAlloyFurnace` | 8 plate + 6 coke | 1 plate + 2 coke → 1 `alloy` | 6 |
+  | T3 | Module Assembler `sc.BuildingModuleAssembler` | 7 part + 5 circuit | 2 part + 1 circuit → 1 `module` | 8 |
+  | T3 | Frame Shop `sc.BuildingFrameShop` | 7 alloy + 5 part | 1 alloy + 2 plate → 1 `frame` | 8 |
 
   Build costs always use **lower tiers** than a processor produces, so the tree bootstraps from
-  raws with no deadlock. T2/T3 processors have a **2×2** footprint.
+  raws with no deadlock. T2/T3 processors have a **2×2** footprint. **Every build cost exceeds a
+  robot's carry capacity (10)**, so raising any structure is a **≥2-trip haul** — no site is
+  funded by a single `PickUp`; sites **accumulate deliveries across trips**.
 
 - **Base infrastructure buildings:**
   - **Base** (pre-placed, one) — the **quest hub** and a **charging pad**. `Drop` the quest's
     goods on it to progress; meet the quest and it **levels up**. You **cannot** `PickUp` from
     the Base (its store is the quest accumulator only). The Base **cannot be destroyed**.
-  - **Storage** (2×2 hub, costs **3 ore**) — a big buffer (cap 500) robots `PickUp` from and
+  - **Storage** (2×2 hub, costs **8 ore + 4 metal**) — a big buffer (cap 500) robots `PickUp` from and
     `Drop` into. The starting one holds your capital; build more with
     `World().Build(sc.BuildingStorage, …)`.
-  - **Mining** (costs **6 ore + 3 metal**) — placed on a live resource spot; auto-mines into a
+  - **Mining** (costs **9 ore + 5 metal**) — placed on a live resource spot; auto-mines into a
     small capped store that robots `PickUp` from.
-  - **Flying Station** (costs **4 ore + 2 metal**) — a **charging pad** *and* the **robot
+  - **Flying Station** (costs **10 ore + 5 metal**) — a **charging pad** *and* the **robot
     factory**: stock it, then `station.BuildRobot(n)`.
 
 - **Upgrade buildings** (higher-tier sinks — built structures, *not* processors):
-  - **Deep Mine `sc.BuildingDeepMine`** (built with **6 part**) — like Mining but mines **2×
+  - **Deep Mine `sc.BuildingDeepMine`** (built with **6 part + 6 plate**) — like Mining but mines **2×
     faster** into a **2× buffer** (24). Place on a spot.
-  - **Warehouse `sc.BuildingWarehouse`** (built with **4 alloy**, 2×2) — a general store like
+  - **Warehouse `sc.BuildingWarehouse`** (built with **5 alloy + 8 plate**, 2×2) — a general store like
     Storage but **much larger** (cap 1500).
-  - **Charging Tower `sc.BuildingChargingTower`** (built with **4 circuit**) — a remote
+  - **Charging Tower `sc.BuildingChargingTower`** (built with **5 circuit + 8 wire**) — a remote
     **charging pad** (no haulable store); land and `r.Charge()`.
 
 - **Everything except the Base is built autonomously:** place a site with
