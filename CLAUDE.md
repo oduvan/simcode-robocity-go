@@ -59,9 +59,10 @@ can gate a push on it.
 
 ## The game you're playing (Robot City Builder)
 
-Goal of the reference module: **raise the Base's level**. The Base sets a **quest** (an amount
-of ore + metal); deliver it and the Base **levels up** to a harder quest — endlessly. Your
-**highest Base level is your score.**
+Goal of the reference module: **raise the Base's level**. The Base sets a **quest**; deliver it
+and the Base **levels up** to a harder quest — endlessly. The quest **climbs the supply chain**
+with each level (raws → basics → parts → advanced goods), so leveling up eventually means
+standing up a whole **factory tree**. Your **highest Base level is your score.**
 
 > **This starter does NOT play the game.** It only keeps the robots alive and flies them
 > around to explore the map. Building the winning loop below is **your** job — that's the point
@@ -72,8 +73,9 @@ The loop you'll build toward:
 ```
 pick up a kit from the starting Storage → fly to a resource spot →
   place a Mining site (World().Build) + Drop the kit to build it → the mine digs itself →
-  haul its ore/metal to the Base to fill the quest → Base LEVELS UP → repeat, harder
-  (and: build a Flying Station to make more robots; recharge on any pad to keep flying)
+  haul raws to processors → processors refine them into higher tiers (autonomously) →
+  haul the goods the quest asks for to the Base → Base LEVELS UP → repeat, harder
+  (and: build Flying Stations to make more robots; recharge on any pad to keep flying)
 ```
 
 - **Robots start EMPTY.** There's no free kit — a robot carries nothing until it picks
@@ -84,25 +86,64 @@ pick up a kit from the starting Storage → fly to a resource spot →
   pathfinding, multiple robots may share a spot). They interact with a building by their
   **rounded cell** (`r.Cell()`). Flying **spends energy** (∝ distance); run the battery to zero
   **mid-flight and the robot is destroyed** — its cargo vanishes. Recharge by landing on a
-  **charging pad** (the **Base** or a **Flying Station**) and calling `r.Charge()`.
-- **Resources:** `ore` and `metal`, found at finite **spots** (a spot yields one or the other).
-  A **Mining building mines autonomously** into its own storage — there is no mine command; a
-  robot only **picks up** the output and **hauls** it away.
-- **Buildings:**
-  - **Base** (pre-placed, one) — the **quest hub** and a **charging pad**. `Drop` ore/metal on
-    it to progress the current quest; meet it and it **levels up**. You **cannot** `PickUp`
-    from the Base (its store is the quest accumulator only).
-  - **Storage** (2×2 hub) — a big buffer robots `PickUp` from and `Drop` into. The starting one
-    holds your capital; build more with `World().Build(sc.BuildingStorage, …)`.
-  - **Mining** — placed on a live resource spot; auto-mines its resource into a small capped
-    store that robots `PickUp` from.
-  - **Flying Station** — a **charging pad** *and* the **robot factory**: stock it (`Drop`
-    ore/metal), then call `station.BuildRobot(n)` to produce robots there.
+  **charging pad** (the **Base**, a **Flying Station**, or a **Charging Tower**) and calling
+  `r.Charge()`.
+
+### Resources — a 4-raw supply chain (the #5 tree)
+Robots **only haul**. Mining and **all refining** are autonomous: you place buildings and feed
+them; they do the work.
+
+- **4 raws**, mined from finite **spots** (each spot yields one): `ore`, `metal`, `crystal`,
+  `carbon`. A **Mining building auto-mines** its spot's raw into its own capped store; a robot
+  only `PickUp`s the output and hauls it.
+- **Processors** are autonomous factory buildings: a robot `Drop`s the recipe's **inputs** into
+  the processor's **input** store, it converts them over a few ticks, and a robot `PickUp`s the
+  **output** from its **output** store. (On a processor, direction picks the store: `Drop` →
+  input, `PickUp` → output. Input/output stores hold 20 each.) The tree:
+
+  | Tier | Building (`sc.` constant) | Build cost | Recipe (per batch) | Ticks |
+  | --- | --- | --- | --- | --- |
+  | T1 | Smelter `sc.BuildingSmelter` | 8 ore + 4 metal | 2 ore → 1 `plate` | 4 |
+  | T1 | Wire Mill `sc.BuildingWireMill` | 4 ore + 8 metal | 2 metal → 1 `wire` | 4 |
+  | T1 | Glassworks `sc.BuildingGlassworks` | 6 ore + 4 crystal | 2 crystal → 1 `glass` | 4 |
+  | T1 | Kiln `sc.BuildingKiln` | 6 ore + 4 carbon | 2 carbon → 1 `coke` | 4 |
+  | T2 | Assembler `sc.BuildingAssembler` | 6 plate + 3 wire | 2 plate + 1 wire → 1 `part` | 6 |
+  | T2 | Electronics Lab `sc.BuildingElectronicsLab` | 6 wire + 3 glass | 2 wire + 1 glass → 1 `circuit` | 6 |
+  | T2 | Alloy Furnace `sc.BuildingAlloyFurnace` | 4 plate + 4 coke | 1 plate + 2 coke → 1 `alloy` | 6 |
+  | T3 | Module Assembler `sc.BuildingModuleAssembler` | 4 part + 2 circuit | 2 part + 1 circuit → 1 `module` | 8 |
+  | T3 | Frame Shop `sc.BuildingFrameShop` | 3 alloy + 2 part | 1 alloy + 2 plate → 1 `frame` | 8 |
+
+  Build costs always use **lower tiers** than a processor produces, so the tree bootstraps from
+  raws with no deadlock. T2/T3 processors have a **2×2** footprint.
+
+- **Base infrastructure buildings:**
+  - **Base** (pre-placed, one) — the **quest hub** and a **charging pad**. `Drop` the quest's
+    goods on it to progress; meet the quest and it **levels up**. You **cannot** `PickUp` from
+    the Base (its store is the quest accumulator only). The Base **cannot be destroyed**.
+  - **Storage** (2×2 hub, costs **3 ore**) — a big buffer (cap 500) robots `PickUp` from and
+    `Drop` into. The starting one holds your capital; build more with
+    `World().Build(sc.BuildingStorage, …)`.
+  - **Mining** (costs **6 ore + 3 metal**) — placed on a live resource spot; auto-mines into a
+    small capped store that robots `PickUp` from.
+  - **Flying Station** (costs **4 ore + 2 metal**) — a **charging pad** *and* the **robot
+    factory**: stock it, then `station.BuildRobot(n)`.
+
+- **Upgrade buildings** (higher-tier sinks — built structures, *not* processors):
+  - **Deep Mine `sc.BuildingDeepMine`** (built with **6 part**) — like Mining but mines **2×
+    faster** into a **2× buffer** (24). Place on a spot.
+  - **Warehouse `sc.BuildingWarehouse`** (built with **4 alloy**, 2×2) — a general store like
+    Storage but **much larger** (cap 1500).
+  - **Charging Tower `sc.BuildingChargingTower`** (built with **4 circuit**) — a remote
+    **charging pad** (no haulable store); land and `r.Charge()`.
+
 - **Everything except the Base is built autonomously:** place a site with
-  `city.World().Build(type, x, y)`, robots **`Drop`** resources to fulfil the recipe, and the
-  site **self-completes** once supplied — no connect step, no robot labor.
-- **Recipes:** Mining `6 ore + 3 metal`, Storage `3 ore`, Flying Station `4 ore + 2 metal`; a
-  Flying Station spends `12 ore + 6 metal` from its own store per robot it builds.
+  `city.World().Build(type, x, y)`, robots **`Drop`** the build cost to fulfil it, and the site
+  **self-completes** once supplied — no connect step, no robot labor.
+- **Growing the fleet costs parts.** A Flying Station now spends **2 part + 1 circuit** from its
+  own store per robot it builds — so the whole chain feeds robot production.
+- **The Base quest climbs tiers.** L1 asks for **40 ore + 20 metal**; L2 **20 plate + 10 wire**;
+  L3 **10 part + 5 circuit**; L4+ **4 module + 3 frame**, scaling up past the top tier. The
+  objective pulls you up the whole tree.
 - **Same map for everyone.** The module fixes the world seed, so *every* city of this type
   starts from the **identical canonical map** — the only variable is your code.
 
@@ -142,8 +183,12 @@ Every handler gets one `sc.Event`:
 | `sc.EventConstructionStarted` | `building_id`, `type` | a `World().Build(...)` placed a site. |
 | `sc.EventResourceDelivered` | `building_id`, `item`, `amount` | a `Drop` deposited into a site/store (one per item). |
 | `sc.EventConstructionComplete` | `building_id`, `type` | a site finished building (now active). |
+| `sc.EventResourceProduced` | `building_id`, `item`, `amount` | a processor finished a batch — its **output** store now holds `amount` of `item` to haul. |
+| `sc.EventProductionBlocked` | `building_id`, `reason` | a processor stalled — `reason` is `output_full` (haul its output away) or `input_short` (feed it more inputs). Fires once per transition into blocked. |
 | `sc.EventSpotDepleted` | `building_id` | a Mining building's resource spot ran out. |
 | `sc.EventStorageFull` | `building_id` | a building's storage is full. |
+| `sc.EventDecommissionStarted` | `building_id` | a `Destroy` began — the building holds a **recoverable** store to haul away. |
+| `sc.EventBuildingDestroyed` | `building_id` | a decommissioned building's recoverable store was emptied and it was removed. |
 | `sc.EventInventoryFull` | — | a robot can't carry more. |
 | `sc.EventRobotProduced` | `robot_id` | a **Flying Station** finished a new robot. |
 | `sc.EventRobotDestroyed` | `position`, `reason` | a robot ran out of energy **mid-flight** — gone, cargo lost. |
@@ -171,9 +216,10 @@ a **world** call, `city.World().Build(...)`, not bound to a robot.
 | Call | What it does | Completes with |
 | --- | --- | --- |
 | `r.MoveTo(x, y float64)` | **Fly** in a straight line to float `(x, y)`, ignoring terrain/other robots. Spends energy with distance; reveals the map (radius ~5) as it goes — this is how you explore. | `arrived` / `blocked` / `robot_destroyed` |
-| `city.World().Build(sc.BuildingMining\|sc.BuildingStorage\|sc.BuildingFlyingStation, x, y int)` | Place a self-building construction **site** at `(x, y)`. `mining` must be on a live resource spot; the Base isn't buildable. **Not** bound to a robot. | `construction_started` / `blocked` |
-| `r.PickUp(item, amount)` | Grab `amount` of `item` from the building on the robot's cell **into its inventory** (e.g. `r.PickUp("ore", 6)`). Use `r.PickUpItem("ore")` for all of one item, `r.PickUpAll()` for everything that fits. Instant. | resolves, then `idle` |
-| `r.Drop(item, amount)` | Release `amount` of `item` into the building/site on the robot's cell — supply a build site, or feed the Base/Storage. Use `r.DropItem("metal")` for all of one item, `r.DropAll()` for everything held. Instant. | `resource_delivered` |
+| `city.World().Build(type, x, y int)` | Place a self-building construction **site** at `(x, y)` for any buildable `type` — infrastructure (`sc.BuildingMining`, `sc.BuildingStorage`, `sc.BuildingFlyingStation`), a **processor** (`sc.BuildingSmelter`, `sc.BuildingWireMill`, `sc.BuildingGlassworks`, `sc.BuildingKiln`, `sc.BuildingAssembler`, `sc.BuildingElectronicsLab`, `sc.BuildingAlloyFurnace`, `sc.BuildingModuleAssembler`, `sc.BuildingFrameShop`), or an **upgrade** (`sc.BuildingDeepMine`, `sc.BuildingWarehouse`, `sc.BuildingChargingTower`). `mining`/`deep_mine` must be on a live resource spot; the Base isn't buildable. **Not** bound to a robot. | `construction_started` / `blocked` |
+| `city.World().Destroy(x, y int)` | Decommission the building at `(x, y)` (also `b.Destroy()` on a handle). It enters `decommissioning` with a **recoverable** store = its build cost (fully refunded) **＋ its current contents**; robots `PickUp` from it and haul it off, and once empty it's removed (`building_destroyed`). The Base can't be destroyed. **Not** bound to a robot. | `decommission_started` / `building_destroyed` |
+| `r.PickUp(item, amount)` | Grab `amount` of `item` from the building on the robot's cell **into its inventory** (a Mining/Storage/Warehouse store, a **processor's output**, or a **recoverable** store — e.g. `r.PickUp("plate", 6)`). Use `r.PickUpItem("ore")` for all of one item, `r.PickUpAll()` for everything that fits. Instant. | resolves, then `idle` |
+| `r.Drop(item, amount)` | Release `amount` of `item` into the building/site on the robot's cell — supply a build site, feed a Storage/Warehouse, feed a **processor's input**, or deliver to the Base. Use `r.DropItem("metal")` for all of one item, `r.DropAll()` for everything held. Instant. | `resource_delivered` |
 | `r.Charge()` | Charge on the **Flying Station on the robot's cell**; holds the robot until the battery is full. | `charge_complete` / `blocked` (`no_station`) |
 | `r.Send(targetID, payload)` | Send a message to another robot. | the peer gets an `EventMessage` |
 | `r.Cancel()` | Abort the current command; the robot goes free. | `idle` |
@@ -188,13 +234,15 @@ or single-step-move commands — robots only fly, haul, and charge.
 ### The Base — the quest hub — `city.Base()`
 There's one Base; reach it via `city.Base()`. It **isn't built or commanded** — you feed it and
 read its objective:
-- **Feed it:** robots `Drop("ore", …)` / `Drop("metal", …)` (or `DropAll()`) on the Base's cell. Its store is the **quest
-  accumulator**, capped per-resource at the requirement (excess stays on the robot). You
-  **cannot `PickUp` from the Base.** It also doubles as a **charging pad** (`r.Charge()`).
+- **Feed it:** robots `Drop(item, …)` (or `DropAll()`) the **items the current quest asks for**
+  on the Base's cell — early quests want raws (`ore`/`metal`), later ones want `plate`/`wire`,
+  then `part`/`circuit`, then `module`/`frame`. Its store is the **quest accumulator**, capped
+  per-item at the requirement (excess stays on the robot). You **cannot `PickUp` from the
+  Base.** It also doubles as a **charging pad** (`r.Charge()`).
 - **Read the objective:** `city.Base().Level()` (current level, starts at 1) and
-  `city.Base().Quest()` — a raw `map[string]any` `{"required":{ore,metal},
-  "progress":{ore,metal}}` (progress = min(delivered, required)). Deliver the required ore+metal
-  and the Base **levels up** to the next, harder quest. React via `EventQuestUpdated` /
+  `city.Base().Quest()` — a raw `map[string]any` `{"required":{item:qty}, "progress":{item:qty}}`
+  (progress = min(delivered, required); the items depend on the level). Deliver the required
+  goods and the Base **levels up** to the next, harder quest. React via `EventQuestUpdated` /
   `EventBaseLevelUp`.
 
 ### Grow the fleet — Flying Stations — `city.Stations()`
@@ -203,12 +251,12 @@ Robots are built at a **Flying Station** (not the Base). Build one with
 
 | Call | What it does |
 | --- | --- |
-| `station.BuildRobot(n)` | Queue `n` robots at **this** station. Each consumes `12 ore + 6 metal` from the station's own store and takes time; each finished one spawns **empty** at the station and fires `EventRobotProduced` + its first `EventIdle`. Waits if the store is short. |
+| `station.BuildRobot(n)` | Queue `n` robots at **this** station. Each consumes `2 part + 1 circuit` from the station's own store and takes time; each finished one spawns **empty** at the station and fires `EventRobotProduced` + its first `EventIdle`. Waits if the store is short. |
 | `station.CancelProduction()` | Clear this station's production queue. |
 
 Get a station handle from `city.Stations()`; each exposes `.Storage()` (its production store —
-`Drop` ore/metal here to fuel building) and `.Production()` (`active`/`progress`/`queued`). You
-**cannot `PickUp` from a station** (its store is production-only).
+`Drop` **parts + circuits** here to fuel building) and `.Production()` (`active`/`progress`/`queued`).
+You **cannot `PickUp` from a station** (its store is production-only).
 
 ### Read the world (read fresh each event)
 You never hold a live object — these read the current state when your handler runs.
@@ -221,14 +269,18 @@ You never hold a live object — these read the current state when your handler 
   `r.Here()` (`.X`, `.Y`, `.Terrain`, `.Spot`, `.Building` — what's on its cell),
   and per-robot state `r.Memory()` / `r.SetMemory(map[string]any)`.
 - **Buildings:** `city.Buildings()` `[]*Building`, `city.Base()`, `city.Stations()`. A
-  `*Building` exposes `.Type()` (`base`/`mining`/`storage`/`flying_station`), `.Position()`,
-  `.Footprint()` `(w, h int)`, `.Status()` (`constructing`/`active` — compare with
-  `sc.StatusActive`/`sc.StatusConstructing`), `.Storage()` (a **`Store`** item map: `.Get("ore")`,
-  `.Has("ore")`, `.Items`, `.Total()`, `.Free()`, `.Capacity`), `.Spot()` (Mining — auto-mines
-  into its storage), `.Level()` + `.Quest()` (Base),
+  `*Building` exposes `.Type()` (one of `base`/`mining`/`storage`/`flying_station`/`smelter`/
+  `wire_mill`/`glassworks`/`kiln`/`assembler`/`electronics_lab`/`alloy_furnace`/
+  `module_assembler`/`frame_shop`/`deep_mine`/`warehouse`/`charging_tower`), `.Position()`,
+  `.Footprint()` `(w, h int)`, `.Status()` (`constructing`/`active`/`decommissioning` — compare
+  with `sc.StatusActive`/`sc.StatusConstructing`), `.Storage()` (a **`Store`** item map:
+  `.Get("ore")`, `.Has("ore")`, `.Items`, `.Total()`, `.Free()`, `.Capacity`), `.Spot()`
+  (Mining/Deep Mine — auto-mines into its storage), `.Level()` + `.Quest()` (Base),
   `.Production()` (Flying Station), `.Construction()` (while building — sites self-complete, no
-  connect step). `.Quest()` / `.Construction()` are raw `map[string]any` bags with nested
-  `{ore,metal}` objects.
+  connect step). **Processors** add `.Input()` / `.Output()` (`Store`s — haul inputs into
+  `.Input()`, pull products from `.Output()`) and `.Recipe()` (its `inputs`/`output`/`ticks`).
+  A **decommissioning** building exposes `.Recoverable()` (a `Store` to `PickUp` and haul away).
+  `.Quest()` / `.Construction()` / `.Recipe()` are raw `map[string]any` bags.
 - **World:** `city.World()` → `.Tick()`, `.Size()` (bounding box of the **discovered** region,
   not a fixed extent), `.Seed()`, `.Discovered()`, `.Spots()` — the resource spots
   **discovered so far** (each `Cell` has `.X`, `.Y`, and `.Spot.Resource` / `.Spot.Remaining`) —
@@ -260,12 +312,22 @@ edit (it runs your controller against the real engine — see "Test locally" abo
 confirm on the live city + logs after a push (or via the platform's MCP tools). High-leverage
 improvements over the starter:
 
-- **Bootstrap *both* an ore mine and a metal mine** — the Base quest needs both ore and metal,
-  so a fleet that only mines ore stalls. When a mine's spot runs dry (`EventSpotDepleted`),
-  build a **replacement** so production never stops and the level keeps climbing.
+- **Bootstrap *both* an ore mine and a metal mine** — the level-1 quest needs both, so a fleet
+  that only mines ore stalls. When a mine's spot runs dry (`EventSpotDepleted`), build a
+  **replacement** so production never stops and the level keeps climbing.
+- **Then climb the supply chain.** Past level 1 the quest asks for refined goods
+  (plate/wire → part/circuit → module/frame), so you'll need to place **processors**
+  (`sc.BuildingSmelter`, `sc.BuildingAssembler`, …) and keep them fed: haul raws into a
+  processor's input, haul its output onward. Watch for `EventResourceProduced` (a batch is
+  ready to haul) and `EventProductionBlocked` (`output_full` → clear its output;
+  `input_short` → feed it). Also mine **crystal** and **carbon** — the glass/coke branches
+  need them.
 - **Build on the nearest spot, not a fixed direction.** Prefer the closest known spot from
   `city.World().Spots()`, and only fly into the fog to explore when none is known — the world
   is endless, so there's no edge to wedge against, just more map to reveal.
+- **Relocate with `Destroy` when a layout stops working** — `city.World().Destroy(x, y)` (or
+  `b.Destroy()`) refunds the build cost **plus** contents into a recoverable store you haul off,
+  so a mine on a depleted spot or a misplaced factory isn't a dead loss.
 - **Manage energy.** Build **Flying Stations** near your mining frontier (extra charging pads)
   and `r.Charge()` robots **before** they run dry — a robot that runs out of energy mid-flight
   is destroyed and its cargo lost. Add **Storage** as a buffer; grow the fleet with

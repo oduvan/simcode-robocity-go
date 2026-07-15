@@ -5,9 +5,13 @@ that drives the whole robot fleet; **push to the default branch and the platform
 it into your live city.
 
 **The goal:** robots start empty. Pick up materials from the starting **Storage**, build
-**mines** on resource spots, and haul their ore/metal to the **Base** to complete its **quest**
-— each quest cleared **levels the Base up** (your score). Build a **Flying Station** to recharge
-robots and to manufacture more of them. The starter controller does all of this; improve it.
+**mines** on resource spots (4 raws: ore, metal, crystal, carbon), and feed a tree of
+autonomous **processors** (smelter → assembler → module assembler, …) that refine raws into
+higher-tier goods. Haul what the **Base**'s current **quest** asks for to complete it — each
+quest cleared **levels the Base up** (your score), and the quest **climbs the supply chain** as
+you level. Build **Flying Stations** to recharge robots and manufacture more (they cost
+**parts**). The starter only keeps robots alive and explores — building the winning loop is your
+job.
 
 - **Edit `main.go`** to change how your robots behave (pick up, place mines, haul to the Base,
   charge, build robots at a Flying Station).
