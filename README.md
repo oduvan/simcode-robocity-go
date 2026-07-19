@@ -7,11 +7,14 @@ it into your live city.
 **The goal:** robots start empty. Pick up materials from the starting **Storage**, build
 **mines** on resource spots (4 raws: ore, metal, crystal, carbon), and feed a tree of
 autonomous **processors** (smelter → assembler → module assembler, …) that refine raws into
-higher-tier goods. Haul what the **Base**'s current **quest** asks for to complete it — each
-quest cleared **levels the Base up** (your score), and the quest **climbs the supply chain** as
-you level. Build **Flying Stations** to recharge robots and manufacture more (they cost
-**parts**). The starter only keeps robots alive and explores — building the winning loop is your
-job.
+higher-tier goods. Haul the **products** the **Base**'s current **quest** asks for to complete it —
+each quest cleared **levels the Base up** (your score) and **unlocks the next tier** of buildings +
+robot types; leveling is product-based (L1→L2 raws, then part → module → module+frame). Build
+**Flying Stations** to recharge robots and manufacture more — robots come in **level-gated types**
+(`BuildRobot(type, n)`) and cost **raw ore + metal**. It's a *living economy*: every robot
+**expires** after flying a fixed distance (keep building replacements), and **T2/T3 processors wear
+down** and need a **mechanic** to `Repair()` them. The starter only keeps robots alive and explores
+— building and maintaining the winning loop is your job.
 
 - **Edit `main.go`** to change how your robots behave (pick up, place mines, haul to the Base,
   charge, build robots at a Flying Station).
