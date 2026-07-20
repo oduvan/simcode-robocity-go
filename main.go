@@ -29,7 +29,7 @@ var dirs = [8][2]int{{1, 0}, {1, 1}, {0, 1}, {-1, 1}, {-1, 0}, {-1, -1}, {0, -1}
 
 const (
 	exploreHop   = 5  // world units to fly per exploration step
-	chargeMargin = 15 // spare battery to keep on top of the trip home
+	chargeMargin = 15 // spare battery to keep beyond the planned flight
 )
 
 var city *sc.City
@@ -44,11 +44,24 @@ func onIdle(e sc.Event) {
 	r := city.Robot(e.Robot)
 	x, y := r.Position()
 
-	// Stay alive: a robot that runs its battery to zero mid-flight is destroyed, so head
-	// back to the Base to recharge WHILE there's still enough energy to reach it. The Base
-	// sits at the origin and doubles as a charging pad. (Distance-aware, not a fixed
-	// threshold — otherwise a robot can wander further than it can fly back from.)
-	if home := math.Hypot(x, y); r.Energy() < home+chargeMargin {
+	// Pick the next explore target: a short hop along a rotating heading. Flying reveals
+	// the map (~5 cells around the robot), so this is how you uncover resource spots.
+	n := 0
+	if v, ok := r.Memory()["hop"].(float64); ok {
+		n = int(v)
+	}
+	n++
+	d := dirs[n%len(dirs)]
+	destX := x + float64(d[0]*exploreHop)
+	destY := y + float64(d[1]*exploreHop)
+
+	// Stay alive — budget the WHOLE ROUND TRIP, not just the way home. A robot that flies
+	// out to (destX, destY) and can't get back to a charging pad dies mid-flight, so before
+	// we commit to the hop we require enough battery for here→dest AND dest→pad plus a
+	// margin. If it can't afford the round trip, divert to the pad and charge now. (The Base
+	// at the origin doubles as a pad; you can also charge on Flying Stations / Charging Towers.)
+	roundTrip := math.Hypot(destX-x, destY-y) + math.Hypot(destX, destY) + chargeMargin
+	if r.Energy() < roundTrip {
 		if cx, cy := r.Cell(); cx == 0 && cy == 0 {
 			r.Charge()
 		} else {
@@ -57,14 +70,7 @@ func onIdle(e sc.Event) {
 		return
 	}
 
-	// Otherwise explore: fly a short hop along a rotating heading. Flying reveals the
-	// map (~5 cells around the robot), so this is how you uncover resource spots.
-	n := 0
-	if v, ok := r.Memory()["hop"].(float64); ok {
-		n = int(v)
-	}
-	n++
+	// Enough battery for the round trip → commit to the explore hop.
 	r.SetMemory(map[string]any{"hop": n})
-	d := dirs[n%len(dirs)]
-	r.MoveTo(x+float64(d[0]*exploreHop), y+float64(d[1]*exploreHop))
+	r.MoveTo(destX, destY)
 }

@@ -404,6 +404,46 @@ You never hold a live object — these read the current state when your handler 
 > `city.World().Spots()` and pick the nearest one yourself (compare `|dx|+|dy|` to
 > `r.Position()`), filtering by `c.Spot.Resource`.
 
+## Common gotchas
+
+Real things that trip up controllers — **behaviour, not magnitudes** (read the numbers from the
+config, per the balance rule above):
+
+1. **A build cost can exceed a robot's inventory.** Funding a construction site can take
+   **several trips** — sites accumulate deliveries across `Drop`s. Don't assume one `PickUp` funds
+   a site: read the cost from `b.Recipe()` and your cap from `r.Inventory().Capacity`, and keep
+   hauling until the site completes.
+2. **`Drop` deposits only what the target still needs or can hold — the excess stays on the
+   robot.** True for build sites, processor inputs, and the Base. Over-pick, or drop mixed cargo
+   into a store that only wants some of it, and you keep the leftovers — and can loop re-dropping
+   into a full store (looks stuck). `sc.EventResourceDelivered` reports the amount actually
+   **accepted** — trust that, not what you asked to drop.
+3. **`World().Build` / `World().Destroy` failures are WORLD events with no `robot_id`.** They
+   arrive as an **`sc.EventBlocked`** carrying `reason`
+   (`no_spot` / `cell_occupied` / `level_required` / `unknown_type` / `nothing_here` / …) plus the
+   target `type` and `pos` in the payload, so you can tell **which** build failed.
+   `World().Build(...)` itself **returns nothing**, so subscribe to `sc.EventBlocked` rather than
+   checking a return value. (A real spot builds even **under fog** — the world is generated
+   deterministically; a build fails only when there's genuinely no live spot there, the type isn't
+   unlocked, the cell's taken, etc.)
+4. **Guard energy for the whole ROUND TRIP, not just the way out.** A robot can reach a far target
+   and then be too drained to get home, dying mid-flight. Before a long flight require
+   `Energy() ≥ dist(here→dest) + dist(dest→nearest pad) + margin`. Pads are the **Base**, active
+   **Flying Stations**, and **Charging Towers**. (The starter's explorer already does this.)
+5. **After the early levels the Base stops accepting raws — it wants PRODUCTS.** Read
+   `city.Base().Quest()`: once it asks for products, raws pile up in Storage and haulers can freeze
+   holding undroppable cargo unless you've built the processor chain. Cap how much of each item you
+   bank, **harvest processor outputs even before a downstream consumer exists** (a full output
+   store stalls the processor), and always give an idle robot something to do.
+6. **The city store and the world persist across code reloads; package-level globals reset.** A
+   design change won't retroactively apply if an old decision is cached via `city.SetStore(...)`
+   (or baked into a building / a robot's memory). Detect stale state on load and migrate or rebuild
+   it.
+7. **Local dev tips.** `fmt.Println(...)` shows in `robocity-sim` stdout — and so does `r.Log(...)`.
+   Store values must be **JSON-serializable**. `r.ID` is a **string** like `"r1"`, not an int; and
+   note `r.Memory()["hop"]` comes back as a `float64` (JSON numbers decode that way), so
+   type-assert accordingly.
+
 ## Constraints — read before editing
 
 - **Sandbox:** restricted runtime — no file/network/process access, no arbitrary packages
