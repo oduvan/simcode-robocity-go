@@ -16,6 +16,13 @@ robot types; leveling is product-based (L1→L2 raws, then part → module → m
 down** and need a **mechanic** to `Repair()` them. The starter only keeps robots alive and explores
 — building and maintaining the winning loop is your job.
 
+> **Balance lives in the config, not in these docs.** The exact numbers (cargo, speed, lifespan,
+> costs, recipe amounts, store caps, quest quantities, wear/repair rates, energy, start capital)
+> are **tuned per city and change over time**, so don't copy magnitudes out of the docs. Read them
+> live — from handles like `b.Recipe()`, `city.Base().Unlocks()`, `r.LifeRemaining()`,
+> `b.Storage().Capacity` — or from the MCP tool **`get_world_config`** for the full picture.
+> `CLAUDE.md` describes the mechanics + API; the config is the source of truth for numbers.
+
 - **Edit `main.go`** to change how your robots behave (pick up, place mines, haul to the Base,
   charge, build robots at a Flying Station).
 - **Push** → your city updates in real time.
