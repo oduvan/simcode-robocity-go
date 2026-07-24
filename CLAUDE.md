@@ -454,6 +454,9 @@ config, per the balance rule above):
   that must survive a push.
 - **Determinism:** no wall-clock or randomness; the world is seeded and replayable.
 - **The SDK is provided** by the platform at runtime — don't vendor a different version.
+- **You cannot reset the world from code.** Resetting a city (wiping it back to tick 0) is a
+  **destructive, owner-only action available ONLY in the web dashboard** (the Reset button) —
+  there is no SDK/MCP reset. Your code influences the world only through robot/world commands.
 
 ## Working in this repo with Claude Code
 
