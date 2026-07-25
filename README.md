@@ -35,8 +35,15 @@ can help you write better robot code.
 ```
 main.go        # your controller (the only thing that runs)
 go.mod         # module + simcode SDK dependency
+issues/        # optional — commit a bug/idea folder here and it posts to the forum
 CLAUDE.md      # the SDK + game reference
 ```
+
+> **Hit a bug?** Small stuff → ask your assistant to file it via the MCP forum tools. Something
+> **complicated** (needs a repro + logs), or MCP not working? Commit an `issues/<name>/` folder
+> (a `README.md` write-up + any evidence files); the next push turns it into a forum post. Always
+> **commit to the default branch — no feature branches, no PRs** (the city only deploys from the
+> default branch).
 
 ## Test it locally before you push
 
