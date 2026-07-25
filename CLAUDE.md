@@ -339,10 +339,14 @@ read its objective:
   Base.** It also doubles as a **charging pad** (`r.Charge()`).
 - **Read the objective:** `city.Base().Level()` (current level, starts at 1) and
   `city.Base().Quest()` — a raw `map[string]any` `{"required":{item:qty}, "progress":{item:qty}}`
-  (progress = min(delivered, required); the items depend on the level). The requirement is
-  **product-based** past the first level (L1→L2 raws, then part → module → module+frame). Deliver
-  the required goods and the Base **levels up** to the next, harder quest. React via
-  `EventQuestUpdated` / `EventBaseLevelUp`.
+  (progress = min(delivered, required); the items depend on the level). ⚠️ Note the shape mismatch:
+  `Quest()` is a **raw nested `map[string]any`**, whereas `r.Inventory()` / `building.Storage()`
+  are **`Store`** handles — so read the quest maps with map indexing + `float64`/`int` assertions on
+  the qty values (`req := q["required"].(map[string]any); need, _ := req["ore"].(float64)`), **not**
+  with `Store` methods like `.Get(...)`. Don't write one accessor that assumes both are `Store`s.
+  The requirement is **product-based** past the first level (L1→L2 raws, then part → module →
+  module+frame). Deliver the required goods and the Base **levels up** to the next, harder quest.
+  React via `EventQuestUpdated` / `EventBaseLevelUp`.
 - **Read what's unlocked:** `city.Base().Unlocks()` returns the buildings + robot types buildable
   at the current level (each level-up widens it — `EventBaseLevelUp` also carries the new set).
   Building or building-a-robot of anything not in it is rejected with a `level_required` reason.
@@ -439,7 +443,25 @@ config, per the balance rule above):
    design change won't retroactively apply if an old decision is cached via `city.SetStore(...)`
    (or baked into a building / a robot's memory). Detect stale state on load and migrate or rebuild
    it.
-7. **Local dev tips.** `fmt.Println(...)` shows in `robocity-sim` stdout — and so does `r.Log(...)`.
+7. **Full Storage can dead-lock the fleet — never park a robot holding cargo it can't drop.**
+   Every idle handler must issue a command; a robot left parked (charge/wait) while still holding
+   undroppable cargo **never re-enters your task selection** and is stuck for good. Don't make
+   Storage the only drop target: if it's full, fall through to the **next valid sink** — the
+   **Base quest item → a processor input that needs it → any Storage with room**. Storage has a
+   fixed cap, so cap how much of each item you bank, harvest processor outputs even without a
+   downstream consumer, and add Storage/Warehouse capacity *before* you hit the ceiling. A couple
+   of robots frozen on undroppable cargo can stall the **entire** city (only `EventQuestUpdated`
+   keeps firing). (Full-Storage flavour of #5 above: same freeze, different trigger.)
+8. **You can dig yourself into an unrecoverable raw shortage.** A Mining building costs a raw
+   (ore); a spot is **finite** and eventually depletes (`sc.EventSpotDepleted`). If stored ore
+   drops below one mine's cost *before* a replacement is up, you can build **neither a mine nor
+   robots** (both cost ore) → a permanent, self-reinforcing deadlock. Defend proactively:
+   (1) **reserve** ~one mine's worth of each raw nothing else may spend; (2) **replace a mine on
+   `Spot().Remaining` getting low, not on your stockpile getting low** — so you still have the raw
+   to fund it; (3) keep the fleet's **type mix bounded** (e.g. cap mechanics) so long-lived
+   specialists don't crowd out haulers; (4) last-ditch, `World().Destroy` a spent mine to reclaim
+   its ore via `.Recoverable()` — but only if a robot then hauls that away.
+9. **Local dev tips.** `fmt.Println(...)` shows in `robocity-sim` stdout — and so does `r.Log(...)`.
    Store values must be **JSON-serializable**. `r.ID` is a **string** like `"r1"`, not an int; and
    note `r.Memory()["hop"]` comes back as a `float64` (JSON numbers decode that way), so
    type-assert accordingly.
