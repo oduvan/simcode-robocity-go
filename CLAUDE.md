@@ -24,6 +24,22 @@ robocity-sim run main.go --ticks 300     # simulate more ticks
 robocity-sim run main.go --json          # machine-readable summary
 ```
 
+**Check your LIVE city after a push** — same tool, no token, no MCP (reads the server's
+public REST API; the city is auto-detected from this repo's git remote):
+
+```bash
+robocity-sim inspect            # compact status of your live city
+robocity-sim inspect --state    # full current world state
+robocity-sim inspect --logs 100 # recent activity + your r.Log() output
+robocity-sim inspect --errors   # unhandled exceptions (panics) since your last push
+```
+
+**If your city looks "frozen" (nothing moving), run `inspect --errors` FIRST.** A panic in
+a handler leaves that robot uncommanded, so a bug in your code looks like a stuck city — this
+lists every unhandled exception since your last release, grouped by `type` + `file:line`,
+with a sample traceback and the log lines leading up to it. `handler errors` in a local
+`run` catches most of these before you push; `inspect --errors` catches what only happens live.
+
 The tool loads the engine over a small cgo bridge, so it needs a **C compiler**
 (`CGO_ENABLED=1` + gcc/clang — the default on macOS and most Linux) at install time. The
 **first run downloads the engine** from the server (`GET /api/engine/lib`) and **caches**
