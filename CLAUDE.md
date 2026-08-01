@@ -258,7 +258,7 @@ them; they do the work.
 ## SDK reference
 
 ```go
-import sc "github.com/lyabah/simcode-sdk-go"
+import sc "github.com/oduvan/simcode-sdk-go"
 
 func main() {
     city := sc.New()                          // connects via the SDK runtime
