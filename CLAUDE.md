@@ -7,7 +7,7 @@ default branch and the platform hot-reloads your code into the running city; the
 immediately act on the new program and you watch the city evolve at your city's live page.
 
 > This is a **user code repo**, not the platform. You only write the controller; the
-> `simcode` SDK, the world, the rules, and the robots come from the platform.
+> `simcode` client library, the world, the rules, and the robots come from the platform.
 
 ## ⚡ Test locally BEFORE you push
 
@@ -50,14 +50,14 @@ controller is doing something. The exit code is non-zero if any handler panicked
 can gate a push on it.
 
 > **Check your code with `robocity-sim run main.go` — NOT `go run main.go`.** Running it
-> directly just starts the SDK runtime with no engine to talk to. `robocity-sim` drives
+> directly just starts the client runtime with no engine to talk to. `robocity-sim` drives
 > your handlers against the real engine tick by tick, so you verify **behaviour**.
 
 > **Platform note:** the engine library is a glibc-linked Linux/macOS build, so run local
 > tests on a normal glibc host (**not** Alpine/musl). To use a locally-built engine instead
 > of the download, point `SIMCODE_ENGINE_SO` at a `libengine.so`; `SIMCODE_SERVER` picks a
 > different server. `go build ./...` still confirms your controller **compiles** (heads-up:
-> a plain build fetches the published SDK over the network, which fails in offline/CI
+> a plain build fetches the published client library over the network, which fails in offline/CI
 > sandboxes with a confusing auth error unrelated to your code).
 
 ## How it works (the model)
@@ -255,13 +255,13 @@ them; they do the work.
 - **Same map for everyone.** The module fixes the world seed, so *every* city of this type
   starts from the **identical canonical map** — the only variable is your code.
 
-## SDK reference
+## client library reference
 
 ```go
-import sc "github.com/oduvan/simcode-sdk-go"
+import sc "github.com/oduvan/simcode-go"
 
 func main() {
-    city := sc.New()                          // connects via the SDK runtime
+    city := sc.New()                          // connects via the client runtime
     city.On(sc.EventIdle, func(e sc.Event) {  // subscribe to an event
         r := city.Robot(e.Robot)              // the robot this event is about
         x, y := r.Position()
@@ -491,10 +491,10 @@ config, per the balance rule above):
   reload** — use `city.SetStore/GetStore` (city-wide) or `r.SetMemory` (per robot) for state
   that must survive a push.
 - **Determinism:** no wall-clock or randomness; the world is seeded and replayable.
-- **The SDK is provided** by the platform at runtime — don't vendor a different version.
+- **The client library is provided** by the platform at runtime — don't vendor a different version.
 - **You cannot reset the world from code.** Resetting a city (wiping it back to tick 0) is a
   **destructive, owner-only action available ONLY in the web dashboard** (the Reset button) —
-  there is no SDK/MCP reset. Your code influences the world only through robot/world commands.
+  there is no client library/MCP reset. Your code influences the world only through robot/world commands.
 
 ## Working in this repo with Claude Code
 
@@ -588,7 +588,7 @@ something to silently work around. File a `bug` post so it gets fixed or the doc
 
 **After you file, MONITOR for an answer — a post isn't done when you submit it.** Check back with
 `get_forum_post(id)` (or `list_forum_posts`) for a maintainer **reply** or a `resolved` flag, and
-relay the answer to your human. (Only the MCP forum tools can post/read — your robot code / the SDK
+relay the answer to your human. (Only the MCP forum tools can post/read — your robot code / the client library
 cannot touch the forum.)
 
 ### When MCP isn't enough — file from the repo with an `issues/` folder

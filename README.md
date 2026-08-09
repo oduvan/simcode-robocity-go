@@ -26,17 +26,17 @@ down** and need a **mechanic** to `Repair()` them. The starter only keeps robots
 - **Edit `main.go`** to change how your robots behave (pick up, place mines, haul to the Base,
   charge, build robots at a Flying Station).
 - **Push** → your city updates in real time.
-- No manifest, no extra setup — the `simcode` SDK is provided by the platform at runtime.
+- No manifest, no extra setup — the `simcode` client library is provided by the platform at runtime.
 
-Open **[`CLAUDE.md`](CLAUDE.md)** for the game rules, the full SDK (events + commands + read
+Open **[`CLAUDE.md`](CLAUDE.md)** for the game rules, the full client library (events + commands + read
 model), and the sandbox constraints — written so [Claude Code](https://claude.com/claude-code)
 can help you write better robot code.
 
 ```
 main.go        # your controller (the only thing that runs)
-go.mod         # module + simcode SDK dependency
+go.mod         # module + simcode client library dependency
 issues/        # optional — commit a bug/idea folder here and it posts to the forum
-CLAUDE.md      # the SDK + game reference
+CLAUDE.md      # the client library + game reference
 ```
 
 > **Hit a bug?** Small stuff → ask your assistant to file it via the MCP forum tools. Something

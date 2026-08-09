@@ -12,7 +12,7 @@
 // replacing the fleet and running the whole economy (robot types, mining, the factory
 // tree, mechanic repairs, Base leveling) is YOUR job.
 //
-// Read CLAUDE.md for the whole game (the goal, the buildings, the full SDK API) and
+// Read CLAUDE.md for the whole game (the goal, the buildings, the full client API) and
 // grow this controller from here. The idea is simple: EventIdle fires whenever a robot
 // needs its next order, so decide what the robot should do and issue one command.
 package main
@@ -20,7 +20,7 @@ package main
 import (
 	"math"
 
-	sc "github.com/oduvan/simcode-sdk-go"
+	sc "github.com/oduvan/simcode-go"
 )
 
 // Compass headings. A robot advances one heading per trip (kept in its memory) so the
