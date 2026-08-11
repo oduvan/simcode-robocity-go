@@ -131,20 +131,13 @@ pick up a kit from the starting Storage → fly to a resource spot →
 3. **Buildings wear.** T2/T3 processors lose **condition** with use; past the halfway mark they
    slow, at empty they **stop**. A **Mechanic** robot carrying metal flies to the building and
    runs `Repair()`.
-4. **Product-based leveling + unlocks.** The **first** level-up (L1→L2) takes **raw** ore+metal;
-   **every level after that requires products** — and each level **unlocks** the next tier of
-   buildings + robot types (a locked type is rejected with `level_required`).
-
-**The unlock ladder** (read `city.Base().Unlocks()` to see what's buildable now; a locked
-type/building is rejected with a `level_required` blocked reason). The quest **quantities** and how
-they scale are balance — read them from `city.Base().Quest()` / `get_world_config`, not from here:
-
-| Base level | Quest to reach the next level | Unlocks at this level |
-| --- | --- | --- |
-| **L1** (start) | **raw ore + metal** (the bootstrap step — the only raw quest) | Mining, Storage, Flying Station, **builder** robots, T1 processors (smelter/wire_mill/glassworks/kiln) |
-| **L2** | a **T2 product** (`part`) | T2 processors (assembler/electronics_lab/alloy_furnace), **hauler**, **scout**, **mechanic** |
-| **L3** | a **T3 product** (`module`) | T3 processors (module_assembler/frame_shop) |
-| **L4+** | **module + frame**, the amount climbing with level | upgrade buildings (deep_mine/warehouse/charging_tower), **heavy_hauler**, **ranger** |
+4. **Product-based leveling + unlocks.** The ladder is **ENDLESS and GENERATED FROM YOUR WORLD'S
+   SEED** — there is no fixed list to memorise, and another city's ladder differs from yours. So:
+   **read `city.Base().Quest()`** for what this level wants and **`city.Base().Unlocks()`** for what
+   is buildable; never hardcode either. Level 1 is always a raws-only bootstrap. Every level is
+   completable with what you already have, and every level is harder than the one below.
+   `city.Base().NextQuest()` previews the level above once you pass ~75% of the current one — nil
+   before that means "not revealed yet", never "no more levels".
 
 **Robot types** — chosen at build time via `station.BuildRobot(type, n)`, unlocked by Base level.
 Robots cost **raw ore + metal** (per type), spent from a Flying Station's own store. Each class
@@ -247,8 +240,8 @@ them; they do the work.
 - **Growing the fleet costs raw ore + metal** (per robot type — see the type table). A Flying
   Station spends **that type's cost** from its own store per robot it builds, so stock a station
   by `Drop`-ing **ore + metal** into it (not products).
-- **The Base quest is product-based and unlocks tiers.** L1→L2 asks for **raw ore + metal**
-  (the only raw step); L2→L3 a **part**; L3→L4 a **module**; L4+ **module + frame** with the amount
+- **The Base quest is product-based, seed-generated and endless.** Read `Quest()` — the items
+  differ per world. Level 1 is raws; past that it wants processed goods, with the amount
   climbing per level. Each level also **unlocks** the next tier of buildings + robot types — the
   objective pulls you up the whole tree. (The exact quantities and scaling live in the config — read
   `city.Base().Quest()` / `get_world_config`.)
@@ -360,7 +353,7 @@ read its objective:
   are **`Store`** handles — so read the quest maps with map indexing + `float64`/`int` assertions on
   the qty values (`req := q["required"].(map[string]any); need, _ := req["ore"].(float64)`), **not**
   with `Store` methods like `.Get(...)`. Don't write one accessor that assumes both are `Store`s.
-  The requirement is **product-based** past the first level (L1→L2 raws, then part → module →
+  The requirement is **product-based** past the first level and generated per world (read it, don't assume;
   module+frame). Deliver the required goods and the Base **levels up** to the next, harder quest.
   React via `EventQuestUpdated` / `EventBaseLevelUp`.
 - **Read what's unlocked:** `city.Base().Unlocks()` returns the buildings + robot types buildable
@@ -541,7 +534,7 @@ improvements over the starter:
   scale a single processor can't solo a level without upkeep, so budget metal for both robots and
   repairs.
 - **Progress unlocks tiers.** You can only build what your Base level has **unlocked**
-  (`city.Base().Unlocks()`; a locked type → `level_required`). L1→L2 needs **raw** ore+metal;
+  (`city.Base().Unlocks()`; a locked type → `level_required`). Level 1 needs **raws**;
   every level after needs **products** (part → module → module+frame), so plan the chain that the
   next quest — and the tier you want to unlock — demands.
 - **Drive it purely by `sc.EventIdle`** — every handler must issue the robot's next command
