@@ -1,76 +1,87 @@
 // SimCode city controller — a MINIMAL starting point.
 //
-// This starter does one thing on purpose: it keeps the robots alive and flies them
-// around to explore the map. It does NOT mine, build, haul, or climb Base levels —
-// that is for YOU to add.
+// This starter does nothing. That is deliberate, and it is the safest possible
+// starting state: your robots stay parked at the Base and wait for orders.
 //
-// Note: robots wear out two ways — running the battery to zero mid-flight (avoidable:
-// charge in time, handled below) AND simply flying too far. Every robot has a max
-// cumulative flight distance (its lifespan, r.LifeRemaining() / r.LifeMax()); once it
-// has flown that far it EXPIRES and is removed (EventRobotExpired). This starter does
-// NOT replace expired robots, mine, process, repair, or level up the Base — growing and
-// replacing the fleet and running the whole economy (robot types, mining, the factory
-// tree, mechanic repairs, Base leveling) is YOUR job.
+// WHY PARKED, AND NOT EXPLORING
 //
-// Read CLAUDE.md for the whole game (the goal, the buildings, the full client API) and
-// grow this controller from here. The idea is simple: EventIdle fires whenever a robot
-// needs its next order, so decide what the robot should do and issue one command.
+// A robot wears out two ways, and only one of them is avoidable:
+//
+//   - ENERGY — flying drains the battery. Run it to zero mid-flight and the robot is
+//     destroyed along with whatever it was carrying. You can avoid this by charging
+//     in time (r.Charge() on a charging pad).
+//   - LIFESPAN — every robot also has a maximum CUMULATIVE flight distance
+//     (r.LifeRemaining() / r.LifeMax()). Fly far enough, over any span of time, and it
+//     simply expires. Nothing prevents this. The only answer is to build replacements
+//     before the fleet ages out.
+//
+// A robot that never flies spends neither. So a parked city is stable: leave it for a
+// day and it is exactly as you left it, ready for your code. A starter that flew
+// around would look busier, but it would burn lifespan for nothing and eventually
+// leave you with no robots at all — and a city with no robots cannot act, because
+// every recovery path is a robot command. That is a real dead end, not a setback.
+//
+// So: nothing here moves until you make it move.
+//
+// WHAT TO DO NEXT
+//
+// EventIdle fires whenever a robot is free and needs its next order — and it keeps
+// firing every few ticks while the robot stays idle, so a robot is never stranded.
+// That is your main loop. Decide what the robot should do, and issue ONE command.
+//
+// The commands are on the robot handle:
+//
+//	r.MoveTo(x, y)      fly in a straight line to a float position (reveals the map)
+//	r.PickUp(item, n)   take from the building on the robot's cell
+//	r.Drop(item, n)     release into the building on the robot's cell
+//	r.Charge()          refill the battery on a charging pad
+//
+// and on the world:
+//
+//	city.Build("mining", x, y)   place a self-building construction site
+//
+// A first step that is genuinely useful: find a resource spot near the Base, put a
+// mine on it, and haul what it produces to the Base to raise your level. Read
+// CLAUDE.md for the whole game and the full API — the goal, the buildings, the supply
+// chain, and what each event carries.
+//
+// One thing worth knowing before you write the loop: the Base ladder is generated from
+// your world's seed, so what a level asks for differs between cities. Read
+// city.Base().Quest() and react to it rather than hardcoding items.
 package main
 
 import (
-	"math"
-
 	sc "github.com/oduvan/simcode-go"
-)
-
-// Compass headings. A robot advances one heading per trip (kept in its memory) so the
-// fleet fans out across the map instead of re-treading a single line into the fog.
-var dirs = [8][2]int{{1, 0}, {1, 1}, {0, 1}, {-1, 1}, {-1, 0}, {-1, -1}, {0, -1}, {1, -1}}
-
-const (
-	exploreHop   = 5  // world units to fly per exploration step
-	chargeMargin = 15 // spare battery to keep beyond the planned flight
 )
 
 var city *sc.City
 
 func main() {
 	city = sc.New()
+
+	// Called whenever a robot is free. Right now it does nothing on purpose.
+	//
+	// e.Robot is the robot that needs an order; city.Robot(e.Robot) is its handle.
+	// Issuing no command leaves the robot parked — safe, and costing nothing.
+	//
+	// Replace this with your strategy. For example, to send a robot to a resource spot
+	// and mine it:
+	//
+	//	r := city.Robot(e.Robot)
+	//	if spot, ok := r.Nearest(sc.Kind("ore_spot")); ok {
+	//	    if r.Cell() != spot {
+	//	        r.MoveTo(float64(spot[0]), float64(spot[1]))
+	//	    } else {
+	//	        city.Build("mining", spot[0], spot[1])
+	//	    }
+	//	}
+	//
+	// Mind the battery once you start flying: budget the WHOLE round trip, out and
+	// back to a charging pad, not just the outbound leg.
 	city.On(sc.EventIdle, onIdle)
 	_ = city.Run()
 }
 
 func onIdle(e sc.Event) {
-	r := city.Robot(e.Robot)
-	x, y := r.Position()
-
-	// Pick the next explore target: a short hop along a rotating heading. Flying reveals
-	// the map (~5 cells around the robot), so this is how you uncover resource spots.
-	n := 0
-	if v, ok := r.Memory()["hop"].(float64); ok {
-		n = int(v)
-	}
-	n++
-	d := dirs[n%len(dirs)]
-	destX := x + float64(d[0]*exploreHop)
-	destY := y + float64(d[1]*exploreHop)
-
-	// Stay alive — budget the WHOLE ROUND TRIP, not just the way home. A robot that flies
-	// out to (destX, destY) and can't get back to a charging pad dies mid-flight, so before
-	// we commit to the hop we require enough battery for here→dest AND dest→pad plus a
-	// margin. If it can't afford the round trip, divert to the pad and charge now. (The Base
-	// at the origin doubles as a pad; you can also charge on Flying Stations / Charging Towers.)
-	roundTrip := math.Hypot(destX-x, destY-y) + math.Hypot(destX, destY) + chargeMargin
-	if r.Energy() < roundTrip {
-		if cx, cy := r.Cell(); cx == 0 && cy == 0 {
-			r.Charge()
-		} else {
-			r.MoveTo(0, 0)
-		}
-		return
-	}
-
-	// Enough battery for the round trip → commit to the explore hop.
-	r.SetMemory(map[string]any{"hop": n})
-	r.MoveTo(destX, destY)
+	_ = e
 }
