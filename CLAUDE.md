@@ -14,11 +14,36 @@ immediately act on the new program and you watch the city evolve at your city's 
 Pushing to see the result is slow. You can run your `main.go` against the **real game
 engine** on your machine — the *exact* engine the server runs (downloaded on demand,
 **not** a re-implementation) — so checking "does this actually work if I push it *now*?"
-takes seconds. **Install the tool once, then run the local check on every change.**
+takes seconds.
+
+**Step 1 — in a new environment, run the one-command setup. This is the FIRST thing to
+run; nothing else is needed before it.**
 
 ```bash
-go install github.com/oduvan/simcode-robocity-go-tools/cmd/robocity-sim@latest
+./setup.sh                               # installs the test tooling + warms the engine cache
+```
 
+`./setup.sh` installs the local test tooling (the `robocity-sim` CLI, which carries the Go
+client library) if it isn't installed yet, then runs a 1-tick local test that downloads and
+caches the game engine — so a real run right afterwards is instant. It is **idempotent and
+fast to re-run**: start every session with it without wondering whether it already ran;
+when everything is in place it skips the install and returns in a moment. If setup can't
+complete, it stops and names what was missing (no Go on `PATH`, no C compiler, no network).
+It is **local testing only** — it never deploys anything to your city (deploying is commit
++ push + resync, below).
+
+> `robocity-sim run main.go` compiles your controller, so the **Go toolchain must be on
+> `PATH` every time** — setup.sh checks that first and says so plainly if it's missing. And
+> if `go install` puts the tool in a directory that isn't on your `PATH` (typically
+> `$(go env GOPATH)/bin`), setup.sh prints the one `export PATH=…` line to paste into the
+> shell you're in right now, and adds that same line **once** to the shell startup files you
+> already have (`~/.profile`, `~/.bashrc`, `~/.zshrc`) so a *new* shell needs no step at all
+> — it names every file it changed, and those files are the only thing it writes outside
+> this repo.
+
+**Step 2 — after every edit, run the local check:**
+
+```bash
 robocity-sim run main.go                 # run your controller vs the REAL engine
 robocity-sim run main.go --ticks 300     # simulate more ticks
 robocity-sim run main.go --json          # machine-readable summary
@@ -40,10 +65,13 @@ lists every unhandled exception since your last release, grouped by `type` + `fi
 with a sample traceback and the log lines leading up to it. `handler errors` in a local
 `run` catches most of these before you push; `inspect --errors` catches what only happens live.
 
-The tool loads the engine over a small cgo bridge, so it needs a **C compiler**
-(`CGO_ENABLED=1` + gcc/clang — the default on macOS and most Linux) at install time. The
-**first run downloads the engine** from the server (`GET /api/engine/lib`) and **caches**
-it under `~/.cache/simcode/`, so later runs are instant — no build step, no token. Your
+**Background (what `./setup.sh` does for you — you don't have to run these by hand).** The
+tooling is one package,
+`go install github.com/oduvan/simcode-robocity-go-tools/cmd/robocity-sim@latest`. It loads
+the engine over a small cgo bridge, so it needs a **C compiler** (`CGO_ENABLED=1` +
+gcc/clang — the default on macOS and most Linux) at install time. The **first run downloads
+the engine** from the server (`GET /api/engine/lib`) and **caches** it under
+`~/.cache/simcode/`, so later runs are instant — no build step, no token. Your
 `main.go` runs **unchanged**. Read the SUMMARY: `handler errors` must be **0**, `robots
 destroyed` should be **0**, and `buildings` / `discovered cells` should grow if the
 controller is doing something. The exit code is non-zero if any handler panicked, so you
@@ -497,7 +525,17 @@ config, per the balance rule above):
 **Commit straight to the default branch — never a feature branch, never a PR.** The city only
 hot-reloads from this repo's **default branch** on push; work parked on another branch or an
 unmerged PR **never deploys**. So the loop is: edit `main.go` → run the local check → commit to
-the default branch → push. Don't create branches, don't open PRs.
+the default branch → push → **resync**. Don't create branches, don't open PRs.
+
+**After the push completes, trigger a resync for this city** — with **the platform's MCP
+`resync` tool for your city**. It is the last step of the loop above, not an optional extra.
+Why: a push is normally delivered to the platform by a notification from GitHub, but that
+delivery is **not guaranteed**, and the automatic catch-up that recovers a missed one only runs
+**periodically** — so without a resync you can push and then wait, with no clear sign whether
+anything happened. A resync makes the new code take effect **immediately**. Do it only for
+changes that affect the **running code** (`main.go`, `lib/`) — a docs-only or `issues/`-only
+commit doesn't need one. (Resync just re-pulls this repo and reloads the code; it never resets
+your world.)
 
 The thing to improve is the **strategy** in `main.go`. The world is fixed, so better code =
 a better city. **Iterate with the local check:** run `robocity-sim run main.go` after every
