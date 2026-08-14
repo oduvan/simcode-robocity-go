@@ -44,10 +44,33 @@ It is **local testing only** — it never deploys anything to your city (deployi
 **Step 2 — after every edit, run the local check:**
 
 ```bash
-robocity-sim run main.go                 # run your controller vs the REAL engine
+robocity-sim run main.go                 # run your controller vs the REAL engine, on YOUR city's world
 robocity-sim run main.go --ticks 300     # simulate more ticks
 robocity-sim run main.go --json          # machine-readable summary
+robocity-sim run main.go --from-live     # start from your city AS IT IS NOW (what a push meets)
+robocity-sim run main.go --canonical     # the canonical map (use this before your city exists)
+robocity-sim check main.go               # would a deploy ACCEPT this code? (no simulation)
 ```
+
+**Testing what a real push actually meets.** A push never starts a new world — it loads new code into a running city, where in-memory values are reset, saved values survive, and robots are part-way through journeys carrying cargo. `--from-live` reproduces exactly that: it resumes your city's saved world and its saved store, continuing the city's own tick numbering. Code that behaves perfectly from an empty world can fail immediately there. A fresh world stays the default (it is reproducible, and it works before your city exists).
+
+**Which world it runs, and why it sometimes refuses.** With no flags it uses **your
+city's** world — its seed and its per-city config — read from the public snapshot. If that
+cannot be obtained (offline, this repo not linked to a city yet), the run **stops** with
+exit code `6` instead of quietly running a different map, because a result from someone
+else's world tells you nothing about yours. Ask for another world by name: `--city
+<slug>`, `--seed <N>`, or `--canonical`. Every run prints which world it used, in the
+banner and again in the summary.
+
+**It accepts exactly what a deploy accepts.** Before simulating, `run` asks the server
+whether a real push would accept this repo — the same rule the server runs on push. Exit
+`4` = a deploy would reject it (fix it before pushing: a rejected release never loads and
+your city silently keeps running the previous code), `5` = the rule could not be consulted.
+
+**Expired is not destroyed.** The summary reports these separately, and only one is a
+problem: `robots expired` = flew past its lifespan (normal end of life — build
+replacements), `robots destroyed` = battery hit 0 mid-flight (avoidable, and a bug in your
+code). A long run turning over many robots is a healthy fleet.
 
 **Check your LIVE city after a push** — same tool, no token, no MCP (reads the server's
 public REST API; the city is auto-detected from this repo's git remote):
@@ -72,9 +95,10 @@ the engine over a small cgo bridge, so it needs a **C compiler** (`CGO_ENABLED=1
 gcc/clang — the default on macOS and most Linux) at install time. The **first run downloads
 the engine** from the server (`GET /api/engine/lib`) and **caches** it under
 `~/.cache/simcode/`, so later runs are instant — no build step, no token. Your
-`main.go` runs **unchanged**. Read the SUMMARY: `handler errors` must be **0**, `robots
-destroyed` should be **0**, and `buildings` / `discovered cells` should grow if the
-controller is doing something. The exit code is non-zero if any handler panicked, so you
+`main.go` runs **unchanged**. Read the SUMMARY: `handler errors` must be **0** and `robots
+destroyed` should be **0** (`robots expired` may be any number — that is normal end of
+life), and `buildings` / `discovered cells` should grow if the controller is doing
+something. The exit code is non-zero if any handler panicked, so you
 can gate a push on it.
 
 > **Check your code with `robocity-sim run main.go` — NOT `go run main.go`.** Running it
