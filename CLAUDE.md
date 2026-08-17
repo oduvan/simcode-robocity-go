@@ -142,6 +142,14 @@ of truth; this doc is not.** Always derive balance from the live game:
   - a robot's `r.Type()`, `r.LifeRemaining()`, `r.LifeMax()`.
   - a store's capacity: `b.Storage().Capacity`, `r.Inventory().Capacity`, etc.
 
+> ### ⚠️ "Do I already have one?" must count SITES, not just finished buildings
+> A construction site **is** a building — it is already in `city.Buildings()` / `OfType(t)`,
+> with `Status() == "constructing"`. So filtering to `"active"` for a "do I have one of these
+> yet?" check answers **no** while yours is still being built, and you order a second, then a
+> third. Count the site too, or you will fund three of everything and stall them all by
+> spreading your materials.
+
+
   Prefer these live handles over any hardcoded number.
 - **The authoritative full balance for the city** is its **world config**, surfaced by the
   language-agnostic MCP tool **`get_world_config`**. It returns `robot_types` (cargo / speed /
@@ -264,8 +272,9 @@ them; they do the work.
   time into condition until the metal runs out or the building is full (`sc.EventRepairComplete`).
   Read a building's condition with `b.Condition()`, and watch `sc.EventMaintenanceNeeded`
   (condition dropped below the maintenance threshold). **Mining and T1 processors never wear** —
-  only T2/T3, and since the mechanic unlocks alongside T2, nothing can decay before you can repair
-  it. (Wear-per-batch and repair rates are config `maintenance` dials — read them, don't assume.)
+  only T2/T3, and the **mechanic is guaranteed to unlock no later than the first building
+  that can wear**, so nothing can decay before you can repair it — but the ladder is generated per
+  world, so read `city.Base().Unlocks()` for *which level* that is rather than assuming a number. (Wear-per-batch and repair rates are config `maintenance` dials — read them, don't assume.)
 
 - **Base infrastructure buildings** (all build costs are in the config — read them there):
   - **Base** (pre-placed, one) — the **quest hub** and a **charging pad**. `Drop` the quest's
@@ -353,7 +362,7 @@ Every handler gets one `sc.Event`:
 | `sc.EventBuildingStopped` | `building_id` | a T2/T3 processor's **condition hit empty** — it stopped producing entirely until repaired (no `robot_id`). |
 | `sc.EventRepairComplete` | `building_id` | a mechanic's `Repair()` ended — either it ran out of held metal or the building reached full condition (no `robot_id`). |
 | `sc.EventQuestUpdated` | `level`, `requirements` | the Base's current quest — at start and after each level-up (`building_id`). Requirement is **product-based** past L1. |
-| `sc.EventBaseLevelUp` | `level`, `quest`, `unlocks` | the Base cleared its quest and **leveled up** — carries the next (product) quest **and the newly unlocked** buildings + robot types (`building_id`). |
+| `sc.EventBaseLevelUp` | `level`, `quest`, `unlocks` | the Base cleared its quest and **leveled up** — carries the next (product) quest and **only what THIS level ADDED** (`building_id`). ⚠️ It is a **delta, not the full set**: cache it as your buildable list and you silently lose every earlier level, then quietly stop building mines. Read `city.Base().Unlocks()` — that one is cumulative. |
 | `sc.EventMessage` | (your payload) | another robot sent you a message via `Send`. |
 
 The cleanest controller is built around **`sc.EventIdle`**: it fires exactly when a robot is
@@ -411,7 +420,7 @@ read its objective:
   module+frame). Deliver the required goods and the Base **levels up** to the next, harder quest.
   React via `EventQuestUpdated` / `EventBaseLevelUp`.
 - **Read what's unlocked:** `city.Base().Unlocks()` returns the buildings + robot types buildable
-  at the current level (each level-up widens it — `EventBaseLevelUp` also carries the new set).
+  at the current level (each level-up widens it — `EventBaseLevelUp` carries only the ADDITION).
   Building or building-a-robot of anything not in it is rejected with a `level_required` reason.
 
 ### Grow the fleet — Flying Stations — `city.Stations()`
