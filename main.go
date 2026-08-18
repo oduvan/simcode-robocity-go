@@ -3,7 +3,7 @@
 // This starter does nothing. That is deliberate, and it is the safest possible
 // starting state: your robots stay parked at the Base and wait for orders.
 //
-// WHY PARKED, AND NOT EXPLORING
+// # WHY PARKED, AND NOT EXPLORING
 //
 // A robot wears out two ways, and only one of them is avoidable:
 //
@@ -23,7 +23,7 @@
 //
 // So: nothing here moves until you make it move.
 //
-// WHAT TO DO NEXT
+// # WHAT TO DO NEXT
 //
 // EventIdle fires whenever a robot is free and needs its next order — and it keeps
 // firing every few ticks while the robot stays idle, so a robot is never stranded.
